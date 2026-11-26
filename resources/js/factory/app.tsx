@@ -135,6 +135,7 @@ export type Store = {
 };
 export type Run = {
     id: number;
+    kind?: 'build' | 'fix' | 'review';
     status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
     droid: string;
     subscription: string | null;

@@ -11,7 +11,8 @@ use Illuminate\Support\Facades\DB;
 /**
  * Puts a droid on a task as its builder or reviewer. A builder moves the task
  * to In progress, releases the in-progress task it was working on before and,
- * on a linked repo, queues a run for a worker to pick up.
+ * on a linked repo, queues a run for a worker to pick up. A reviewer starts on
+ * the task's open pull request, or waits for the builder to open one.
  */
 class AssignDroid
 {
@@ -56,14 +57,16 @@ class AssignDroid
             } else {
                 $task->update(['reviewer_id' => $droid->id]);
 
-                if ($droid->status === 'idle') {
+                // With a pull request open on a linked repo, the review starts now; otherwise when the builder opens one.
+                $queued = $this->runs->queueReview($droid, $task);
+                if (! $queued && $droid->status === 'idle') {
                     $droid->update([
                         'status' => 'working',
                         'task_id' => $task->id,
                         'project_id' => $task->project_id,
                         'progress' => 0,
                         'minutes' => 0,
-                        'step' => "Waiting to review #{$task->number}",
+                        'step' => "Waiting for #{$task->number}'s pull request",
                     ]);
                 }
             }

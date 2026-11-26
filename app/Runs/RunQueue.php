@@ -26,12 +26,16 @@ class RunQueue
     /** How many times a run goes back to the queue after hitting usage limits. */
     public const MAX_ATTEMPTS = 3;
 
+    /** How many times a reviewer's requested changes go back to the builder before a person steps in. */
+    public const MAX_FIX_ROUNDS = 2;
+
     public function __construct(
         private SubscriptionPicker $picker,
         private GitHub $github,
         private RepositoryWriter $writer,
         private Prompt $prompt,
         private Conversation $conversation,
+        private Review $review,
     ) {}
 
     public function queue(Droid $droid, Task $task): Run
@@ -49,8 +53,61 @@ class RunQueue
 
     public function cancelFor(Droid $droid, string $reason): void
     {
-        Run::where('droid_id', $droid->id)->where('kind', 'build')->whereIn('status', Run::ACTIVE)
+        Run::where('droid_id', $droid->id)->whereIn('kind', Run::TASK_KINDS)->whereIn('status', Run::ACTIVE)
             ->update(['status' => 'cancelled', 'error' => $reason, 'finished_at' => now()]);
+    }
+
+    /** Queue a review of the task's open pull request, or return null when there is none to review yet. */
+    public function queueReview(Droid $reviewer, Task $task): ?Run
+    {
+        $task->loadMissing(['project', 'pullRequest']);
+        $pr = $task->pullRequest;
+        if (! $pr || in_array($pr->state, ['merged', 'closed'], true) || ! $task->project->isLinked()) {
+            return null;
+        }
+
+        $this->cancelFor($reviewer, 'Replaced by a newer review');
+        $reviewer->update([
+            'status' => 'working', 'task_id' => $task->id, 'project_id' => $task->project_id,
+            'step' => "Queued: review PR #{$pr->number}", 'progress' => 0, 'minutes' => 0,
+        ]);
+
+        return Run::create([
+            'droid_id' => $reviewer->id,
+            'task_id' => $task->id,
+            'project_id' => $task->project_id,
+            'kind' => 'review',
+            'status' => 'queued',
+            'branch' => $pr->branch,
+            'pr_number' => $pr->number,
+        ]);
+    }
+
+    /** Send a reviewer's requested changes back to the builder, within the round limit. */
+    private function queueFix(Task $task, Run $review, string $feedback): ?Run
+    {
+        $builder = $task->builder;
+        $rounds = Run::where('task_id', $task->id)->where('kind', 'fix')->whereNotIn('status', ['cancelled'])->count();
+        if (! $builder || $rounds >= self::MAX_FIX_ROUNDS) {
+            return null;
+        }
+
+        $this->cancelFor($builder, 'Replaced by a fix after review');
+        $builder->update([
+            'status' => 'working', 'task_id' => $task->id, 'project_id' => $task->project_id,
+            'step' => "Queued: address the review on PR #{$review->pr_number}", 'progress' => 0, 'minutes' => 0,
+        ]);
+
+        return Run::create([
+            'droid_id' => $builder->id,
+            'task_id' => $task->id,
+            'project_id' => $task->project_id,
+            'kind' => 'fix',
+            'status' => 'queued',
+            'branch' => $review->branch,
+            'pr_number' => $review->pr_number,
+            'input' => $feedback,
+        ]);
     }
 
     /**
@@ -96,10 +153,10 @@ class RunQueue
 
         // Conversations go first: someone is waiting on the answer.
         $runs = Run::with(['droid', 'task.project.installation', 'project.installation'])->where('status', 'queued')
-            ->orderByRaw("kind = 'build'")->orderBy('id')->limit(20)->get();
+            ->orderByRaw("kind in ('build', 'fix', 'review')")->orderBy('id')->limit(20)->get();
         foreach ($runs as $run) {
             $subscription = $this->picker->pick($run->droid->provider, $signedIn);
-            if (! $subscription || ($run->isBuild() && ! $run->task?->project->isLinked())) {
+            if (! $subscription || (! $run->isConversation() && ! $run->task?->project->isLinked())) {
                 continue;
             }
 
@@ -117,7 +174,7 @@ class RunQueue
             }
 
             $run->refresh()->load(['droid', 'task.project.installation', 'project.installation', 'subscription']);
-            if ($run->isBuild()) {
+            if (! $run->isConversation()) {
                 $run->droid->update(['status' => 'working', 'step' => "Cloning {$this->projectOf($run)?->repo}", 'progress' => 0.05]);
             }
 
@@ -146,8 +203,16 @@ class RunQueue
                 'name' => $subscription->name,
                 'api_key' => $subscription->api_key,
             ],
-            'prompt' => $run->isBuild() ? $this->prompt->build($run) : $this->conversation->prompt($run),
-            'commit_message' => $run->task ? "feat: {$run->task->title} (#{$run->task->number})" : null,
+            'prompt' => match (true) {
+                $run->isBuild() => $this->prompt->build($run),
+                $run->isReview() => $this->review->prompt($run),
+                default => $this->conversation->prompt($run),
+            },
+            'commit_message' => match (true) {
+                $run->kind === 'fix' && $run->task !== null => "fix: address review on #{$run->task->number}",
+                $run->kind === 'build' && $run->task !== null => "feat: {$run->task->title} (#{$run->task->number})",
+                default => null,
+            },
             'droid' => ['name' => $run->droid->name, 'unit' => $run->droid->unit],
         ];
     }
@@ -186,7 +251,7 @@ class RunQueue
         $run->heartbeat_at = now();
         $run->save();
         $run->worker?->forceFill(['last_seen_at' => now()])->save();
-        if (! $run->isBuild()) {
+        if ($run->isConversation()) {
             return;
         }
 
@@ -203,7 +268,7 @@ class RunQueue
     public function finish(Run $run, array $result): Run
     {
         return DB::transaction(function () use ($run, $result) {
-            $run->load(['droid', 'task.project', 'project', 'subscription']);
+            $run->load(['droid', 'task.project', 'task.pullRequest', 'task.builder', 'task.reviewer', 'project', 'subscription']);
             if (! empty($result['log'])) {
                 $run->appendLog($result['log']);
             }
@@ -223,7 +288,7 @@ class RunQueue
                 default => $this->failed($run, $result['error'] ?? 'The run failed.'),
             };
 
-            if ($run->isBuild()) {
+            if (! $run->isConversation()) {
                 $droid->minutes = (int) $run->started_at?->diffInMinutes(now(), true);
             }
             $droid->save();
@@ -244,7 +309,7 @@ class RunQueue
         }
 
         $run->fill(['status' => 'queued', 'worker_id' => null, 'subscription_id' => null, 'started_at' => null, 'error' => $error]);
-        if (! $run->isBuild()) {
+        if ($run->isConversation()) {
             return;
         }
         $run->droid->fill(['status' => 'working', 'step' => "{$run->subscription?->name} hit its limit, waiting for another subscription", 'progress' => 0]);
@@ -253,7 +318,7 @@ class RunQueue
     private function succeeded(Run $run, bool $pushed): void
     {
         $run->fill(['status' => 'succeeded', 'finished_at' => now()]);
-        if (! $run->isBuild()) {
+        if ($run->isConversation()) {
             $this->conversation->answer($run);
 
             return;
@@ -261,6 +326,11 @@ class RunQueue
         $droid = $run->droid;
         $task = $run->task;
         if (! $task) {
+            return;
+        }
+        if ($run->isReview()) {
+            $this->reviewed($run, $task);
+
             return;
         }
 
@@ -271,19 +341,49 @@ class RunQueue
             return;
         }
 
-        $body = "Closes #{$task->number}\n\n".($run->summary ?: '')."\n\n---\nBuilt by {$droid->unit} {$droid->name} on {$run->subscription?->name}.";
-        $pr = $this->writer->openPullRequest($task->project, $task, (string) $run->branch, trim($body));
-        $run->pr_number = $pr?->number;
+        if ($run->kind === 'fix') {
+            Activity::create(['droid_id' => $droid->id, 'text' => "Pushed review fixes to PR #{$run->pr_number} for #{$task->number}"]);
+        } else {
+            $body = "Closes #{$task->number}\n\n".($run->summary ?: '')."\n\n---\nBuilt by {$droid->unit} {$droid->name} on {$run->subscription?->name}.";
+            $pr = $this->writer->openPullRequest($task->project, $task, (string) $run->branch, trim($body));
+            $run->pr_number = $pr?->number;
+            Activity::create(['droid_id' => $droid->id, 'text' => $pr ? "Opened PR #{$pr->number} for #{$task->number} {$task->title}" : "Pushed {$run->branch} for #{$task->number}"]);
+        }
 
         $task->update(['column' => 'review']);
         $droid->fill(['status' => 'idle', 'task_id' => null, 'step' => '', 'progress' => 0]);
-        Activity::create(['droid_id' => $droid->id, 'text' => $pr ? "Opened PR #{$pr->number} for #{$task->number} {$task->title}" : "Pushed {$run->branch} for #{$task->number}"]);
+
+        // The reviewer takes it from here.
+        $reviewer = $task->reviewer;
+        if ($reviewer && $reviewer->isNot($droid)) {
+            $droid->save();
+            $this->queueReview($reviewer, $task->load('pullRequest'));
+        }
+    }
+
+    /** Post the reviewer's verdict on the pull request, and send requested changes back to the builder. */
+    private function reviewed(Run $run, Task $task): void
+    {
+        $verdict = $this->review->post($run, $task);
+        $droid = $run->droid;
+        $droid->fill(['status' => 'idle', 'task_id' => null, 'step' => '', 'progress' => 0]);
+
+        if ($verdict['state'] !== 'changes') {
+            Activity::create(['droid_id' => $droid->id, 'text' => "Reviewed PR #{$run->pr_number} for #{$task->number}: ".($verdict['state'] === 'approved' ? 'looks good to merge' : 'left comments')]);
+
+            return;
+        }
+
+        $fix = $this->queueFix($task, $run, $verdict['feedback']);
+        Activity::create(['droid_id' => $droid->id, 'text' => $fix
+            ? "Asked for changes on PR #{$run->pr_number}, sent back to {$task->builder?->unit}"
+            : "Asked for changes on PR #{$run->pr_number} for #{$task->number}: it needs you"]);
     }
 
     private function failed(Run $run, string $error): void
     {
         $run->fill(['status' => 'failed', 'error' => Str::limit($error, 2000), 'finished_at' => now()]);
-        if (! $run->isBuild()) {
+        if ($run->isConversation()) {
             $this->conversation->failed($run, Str::limit($error, 500));
 
             return;
@@ -300,9 +400,9 @@ class RunQueue
 
         foreach ($stale as $run) {
             DB::transaction(function () use ($run) {
-                $this->failed($run, $run->isBuild()
-                    ? 'The worker stopped reporting. Start it again, then reassign the droid.'
-                    : 'The worker stopped reporting. Start it again, then ask again.');
+                $this->failed($run, $run->isConversation()
+                    ? 'The worker stopped reporting. Start it again, then ask again.'
+                    : 'The worker stopped reporting. Start it again, then reassign the droid.');
                 $run->droid->save();
                 $run->save();
             });

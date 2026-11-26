@@ -32,11 +32,17 @@ class Prompt
         if ($droid->instructions) {
             $lines = [...$lines, '', 'Standing instructions from your operator:', $droid->instructions];
         }
+        $fix = $run->kind === 'fix';
+        if ($fix) {
+            $lines = [...$lines, '', "A reviewer looked at pull request #{$run->pr_number} and asked for these changes:", (string) $run->input];
+        }
 
         return implode("\n", [...$lines,
             '',
             'How to work:',
-            "- You are on the branch {$run->branch}. Stay on it.",
+            $fix
+                ? "- You are on the branch {$run->branch}, which already holds the earlier work. Address the review on top of it, and stay on the branch."
+                : "- You are on the branch {$run->branch}. Stay on it.",
             '- Read the code and any README, CLAUDE.md or AGENTS.md before changing things, and follow the project\'s conventions.',
             '- Make the smallest change that fully solves the issue, with tests where the project has them.',
             '- Run the project\'s tests and linters if you can, and fix what you broke.',

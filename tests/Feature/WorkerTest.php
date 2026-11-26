@@ -168,6 +168,63 @@ SH);
         $this->assertStringNotContainsString('droids/', $this->sh(['git', 'branch', '--list'], "{$this->root}/git/vtalbot/droids.git"));
     }
 
+    private function pushBranch(string $branch): void
+    {
+        $this->sh(['git', 'checkout', '-q', '-b', $branch], "{$this->root}/seed");
+        File::put("{$this->root}/seed/theme.txt", "dark\n");
+        $this->sh(['git', 'add', '-A'], "{$this->root}/seed");
+        $this->sh(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'feat: theme'], "{$this->root}/seed");
+        $this->sh(['git', 'push', '-q', 'origin', $branch], "{$this->root}/seed");
+    }
+
+    public function test_a_fix_adds_a_commit_to_the_pull_requests_branch(): void
+    {
+        $this->pushBranch('droids/7-dark-mode');
+        $job = ['kind' => 'fix', 'commit_message' => 'fix: address review on #7'] + $this->job();
+        Http::fake([
+            'droids.test/api/worker/claim' => Http::response(['run' => $job]),
+            'droids.test/api/worker/runs/5/progress' => Http::response(['cancelled' => false]),
+            'droids.test/api/worker/runs/5/token' => Http::response(['token' => 'ghs_push']),
+            'droids.test/api/worker/runs/5/finish' => Http::response(['status' => 'succeeded']),
+        ]);
+        $this->stubCli(<<<'SH'
+cat theme.txt > seen.txt
+echo "persisted" >> theme.txt
+echo '{"type":"result","subtype":"success","is_error":false,"result":"Persisted it.","total_cost_usd":0.02,"usage":{}}'
+SH);
+
+        $this->artisan('droids:work --once')->assertSuccessful();
+
+        $git = "{$this->root}/git/vtalbot/droids.git";
+        $this->assertSame("fix: address review on #7\nfeat: theme", trim($this->sh(['git', 'log', '-2', '--format=%s', 'droids/7-dark-mode'], $git)));
+        $this->assertSame('dark', trim($this->sh(['git', 'show', 'droids/7-dark-mode:seen.txt'], $git)), 'the fix started from the earlier work');
+        Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/finish') && $r['pushed'] === true);
+    }
+
+    public function test_a_review_reads_the_branch_and_pushes_nothing(): void
+    {
+        $this->pushBranch('droids/7-dark-mode');
+        $job = ['kind' => 'review', 'commit_message' => null] + $this->job();
+        Http::fake([
+            'droids.test/api/worker/claim' => Http::response(['run' => $job]),
+            'droids.test/api/worker/runs/5/progress' => Http::response(['cancelled' => false]),
+            'droids.test/api/worker/runs/5/finish' => Http::response(['status' => 'succeeded']),
+        ]);
+        $this->stubCli(<<<SH
+printf '%s\n' "\$@" > {$this->root}/args.txt
+git diff --stat origin/HEAD...HEAD > {$this->root}/diff.txt
+echo '{"type":"result","subtype":"success","is_error":false,"result":"{}","usage":{}}'
+SH);
+
+        $this->artisan('droids:work --once')->assertSuccessful();
+
+        $this->assertStringContainsString('theme.txt', File::get("{$this->root}/diff.txt"));
+        $this->assertStringContainsString('Bash(git diff:*)', File::get("{$this->root}/args.txt"));
+        $this->assertStringNotContainsString('--dangerously-skip-permissions', File::get("{$this->root}/args.txt"));
+        Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/finish') && $r['status'] === 'succeeded' && $r['pushed'] === false);
+        Http::assertNotSent(fn (Request $r) => str_ends_with($r->url(), '/token'));
+    }
+
     public function test_codex_events_become_steps_and_a_summary(): void
     {
         $out = new AgentOutput('codex');

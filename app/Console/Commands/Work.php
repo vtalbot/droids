@@ -41,7 +41,7 @@ class Work extends Command
 
             $this->newLine();
             $kind = $job['kind'] ?? 'build';
-            $where = $kind === 'build' ? "on {$job['repo']} ({$job['branch']})" : "{$kind}".(! empty($job['repo']) ? " on {$job['repo']}" : '');
+            $where = in_array($kind, ['build', 'fix', 'review'], true) ? "{$kind} on {$job['repo']} ({$job['branch']})" : "{$kind}".(! empty($job['repo']) ? " on {$job['repo']}" : '');
             $this->info("Run #{$job['id']}: {$job['droid']['unit']} {$job['droid']['name']} {$where}");
             $result = $runner->run($job, fn (string $line) => $this->line('  '.str_replace("\n", "\n  ", $line)));
             $this->info("Run #{$job['id']} {$result['status']}".(! empty($result['error']) ? ": {$result['error']}" : ''));

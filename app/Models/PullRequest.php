@@ -20,7 +20,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $commits
  * @property int $files
  * @property list<array{name: string, state: string, dur?: string, job?: int|null, url?: string|null}>|null $checks
- * @property list<array{by: string, state: string}>|null $reviews
+ * @property list<array{by: string, state: string, droid?: bool}>|null $reviews
  */
 class PullRequest extends Model
 {

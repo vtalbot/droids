@@ -42,6 +42,9 @@ class Run extends Model
     /** Runs that answer in a conversation instead of building a task. */
     public const ASK_KINDS = ['chat', 'plan', 'propose', 'reflect'];
 
+    /** Runs a droid does on a task: build it, fix it after a review, or review its pull request. */
+    public const TASK_KINDS = ['build', 'fix', 'review'];
+
     /** Keep the stored log to its last 64 KB. */
     public const LOG_LIMIT = 65536;
 
@@ -75,9 +78,21 @@ class Run extends Model
         return $this->belongsTo(Project::class);
     }
 
+    /** Builds and fixes change the code and push to the task's branch. */
     public function isBuild(): bool
     {
-        return $this->kind === 'build';
+        return in_array($this->kind, ['build', 'fix'], true);
+    }
+
+    public function isReview(): bool
+    {
+        return $this->kind === 'review';
+    }
+
+    /** Plan, propose, reflect and chat answer in a conversation instead of working on a task. */
+    public function isConversation(): bool
+    {
+        return in_array($this->kind, self::ASK_KINDS, true);
     }
 
     /** @return BelongsTo<Subscription, $this> */

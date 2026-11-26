@@ -601,12 +601,23 @@ const RUN_STATE: Record<Run['status'], { label: string; cls: string }> = {
     cancelled: { label: 'Cancelled', cls: 'text-muted-foreground' },
 };
 
+const RUN_KIND = {
+    build: 'Droid run',
+    fix: 'Fixing review comments',
+    review: 'Review run',
+} as const;
+
 function RunPanel({ run }: { run: Run }) {
     const st = RUN_STATE[run.status];
     return (
-        <section className="grid gap-2" aria-label="Droid run">
+        <section
+            className="grid gap-2"
+            aria-label={RUN_KIND[run.kind ?? 'build']}
+        >
             <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="font-medium">Droid run</span>
+                <span className="font-medium">
+                    {RUN_KIND[run.kind ?? 'build']}
+                </span>
                 <Badge variant="outline" className={st.cls}>
                     {st.label}
                 </Badge>
