@@ -126,6 +126,10 @@ export type Subscription = {
     windows: Window[];
     week: number[];
     spend?: { used: number; cap: number };
+    /** True when the subscription runs on an API key rather than a CLI login. */
+    api?: boolean;
+    /** Workers that reported a CLI login for this subscription. */
+    signedInOn?: string[];
 };
 export const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 /** Current weekday (0 = Monday) and hour in the viewer's local time, for the schedule grid. */

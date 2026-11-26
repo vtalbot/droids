@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { CalendarClockIcon, GaugeIcon, PlusIcon } from 'lucide-react';
+import { CalendarClockIcon, CopyIcon, GaugeIcon, PlusIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -25,7 +25,13 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import { DAYS, nowSlot, PROVIDERS, type Provider } from '@/factory/data';
+import {
+    DAYS,
+    nowSlot,
+    PROVIDERS,
+    type Provider,
+    type Subscription,
+} from '@/factory/data';
 import { EngineLogo } from '@/factory/logos';
 import { DroidAvatar } from '@/factory/droid-avatar';
 import { cn } from '@/lib/utils';
@@ -131,6 +137,53 @@ export function SubscriptionsView({
                 </TabsContent>
             </Tabs>
         </div>
+    );
+}
+
+/** The commands that sign a worker's CLI in to this subscription, in its own login folder. */
+export function loginCommand(sub: Pick<Subscription, 'id' | 'provider'>) {
+    const dir = `~/.droids/logins/${sub.id}`;
+    return sub.provider === 'codex'
+        ? `mkdir -p ${dir}\nCODEX_HOME=${dir} codex login`
+        : `mkdir -p ${dir}\nCLAUDE_CONFIG_DIR=${dir} claude\n# then type /login, sign in, and /exit`;
+}
+
+function WorkerLogin({ sub }: { sub: Subscription }) {
+    const signedIn = (sub.signedInOn ?? []).length > 0;
+    const cmd = loginCommand(sub);
+    return (
+        <details
+            className="group rounded-lg border bg-muted/30 text-xs"
+            open={!signedIn}
+        >
+            <summary className="cursor-pointer px-3 py-2 font-medium select-none">
+                {signedIn ? 'Worker login' : 'Sign in on your worker'}
+            </summary>
+            <div className="grid gap-2 border-t px-3 py-2">
+                <p className="text-muted-foreground">
+                    Run this on the computer that runs{' '}
+                    <code>php artisan droids:work</code>. The worker picks up
+                    the login on its next poll. Slug:{' '}
+                    <code className="font-mono">{sub.id}</code>
+                </p>
+                <pre className="overflow-x-auto rounded-md bg-muted p-2 font-mono text-[11px]">
+                    {cmd}
+                </pre>
+                <Button
+                    size="sm"
+                    variant="outline"
+                    className="justify-self-start"
+                    onClick={() =>
+                        void navigator.clipboard
+                            .writeText(cmd)
+                            .then(() => toast.success('Copied'))
+                    }
+                >
+                    <CopyIcon />
+                    Copy
+                </Button>
+            </div>
+        </details>
     );
 }
 
@@ -253,6 +306,7 @@ function Usage({ store, bump }: { store: Store; bump: () => void }) {
                                                 ))}
                                             </div>
                                         </div>
+                                        {!s.api && <WorkerLogin sub={s} />}
                                     </CardContent>
                                     <CardFooter className="flex items-center gap-2 px-4 text-xs text-muted-foreground">
                                         {live ? (
@@ -676,8 +730,8 @@ export function AddSubscriptionDialog({
                         <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
                             You'll sign in with your{' '}
                             {pv === 'claude' ? 'Claude' : 'ChatGPT'} account on
-                            the droid runner once it's set up. Droids never see
-                            your password.
+                            your worker. The new card shows the command to run
+                            there. Droids never see your password.
                         </p>
                     )}
                     <DialogFooter>

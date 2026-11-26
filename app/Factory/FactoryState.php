@@ -187,17 +187,39 @@ class FactoryState
     /** @return array<int, array<string, mixed>> */
     private function subscriptions(): array
     {
-        return Subscription::orderBy('id')->get()->map(fn (Subscription $s) => array_filter([
+        $workers = Worker::orderBy('name')->get(['name', 'subscriptions']);
+
+        return Subscription::orderBy('id')->get()->map(function (Subscription $s) use ($workers) {
+            $on = [];
+            foreach ($s->usesApiKey() ? [] : $workers as $w) {
+                if (in_array($s->slug, $w->subscriptions ?? [], true)) {
+                    $on[] = $w->name;
+                }
+            }
+
+            return $this->subscription($s, $on);
+        })->values()->all();
+    }
+
+    /**
+     * @param  list<string>  $signedInOn  names of workers that reported a login for this subscription
+     * @return array<string, mixed>
+     */
+    private function subscription(Subscription $s, array $signedInOn): array
+    {
+        return array_filter([
             'id' => $s->slug,
             'provider' => $s->provider,
             'name' => $s->name,
             'account' => $s->account ?? '',
-            'auth' => $s->auth ?? '',
+            'auth' => $signedInOn ? 'Signed in on '.implode(', ', $signedInOn) : ($s->auth ?? ''),
+            'api' => $s->usesApiKey(),
+            'signedInOn' => $signedInOn,
             'color' => $s->color,
             'windows' => $s->windows ?? [],
             'week' => $s->week ?? [],
             'spend' => $s->spend_cap !== null ? ['used' => $s->spend_used ?? 0.0, 'cap' => $s->spend_cap] : null,
-        ], fn ($v) => $v !== null))->values()->all();
+        ], fn ($v) => $v !== null);
     }
 
     /**

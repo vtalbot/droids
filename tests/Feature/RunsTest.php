@@ -298,6 +298,20 @@ class RunsTest extends TestCase
             ->assertJsonPath('store.workers.total', 1);
     }
 
+    public function test_the_store_shows_which_workers_are_signed_in_to_each_subscription(): void
+    {
+        $this->sub('claude-api', 'Claude API', 'sk-ant-key');
+        $this->claim(['claude-max']);
+
+        $subs = collect($this->actingAs(User::factory()->create())->getJson('/factory/state')->assertOk()->json('store.subs'))->keyBy('id');
+
+        $this->assertSame(['MacBook'], $subs['claude-max']['signedInOn']);
+        $this->assertSame('Signed in on MacBook', $subs['claude-max']['auth']);
+        $this->assertSame([], $subs['claude-pro']['signedInOn']);
+        $this->assertFalse($subs['claude-pro']['api']);
+        $this->assertTrue($subs['claude-api']['api']);
+    }
+
     /** @return array<string, mixed> */
     private function pull(): array
     {
