@@ -1,0 +1,2568 @@
+{
+    "projects": [
+        {
+            "id": "store",
+            "name": "Storefront",
+            "repo": "acme/storefront",
+            "board": "Storefront v3",
+            "color": "oklch(0.55 0.19 258)",
+            "milestone": "v3.2 checkout",
+            "due": "Dec 12",
+            "done": 31,
+            "total": 44
+        },
+        {
+            "id": "billing",
+            "name": "Billing API",
+            "repo": "acme/billing-api",
+            "board": "Q4 Billing",
+            "color": "oklch(0.6 0.12 175)",
+            "milestone": "Tax compliance",
+            "due": "Dec 19",
+            "done": 18,
+            "total": 37
+        },
+        {
+            "id": "core",
+            "name": "Factory core",
+            "repo": "droids/factory-core",
+            "board": "Roadmap",
+            "color": "oklch(0.64 0.16 50)",
+            "milestone": "Multi-repo runs",
+            "due": "Jan 9",
+            "done": 12,
+            "total": 40
+        },
+        {
+            "id": "ink",
+            "name": "ink-cli",
+            "repo": "oss/ink-cli",
+            "board": "Triage",
+            "color": "oklch(0.56 0.18 300)",
+            "milestone": "1.0 release",
+            "due": "Dec 5",
+            "done": 26,
+            "total": 29
+        }
+    ],
+    "droids": [
+        {
+            "id": "cl07",
+            "unit": "CL-07",
+            "name": "Rivet",
+            "provider": "claude",
+            "model": "Opus 5.5",
+            "role": "Builder",
+            "status": "working",
+            "project": "store",
+            "task": 412,
+            "step": "Running checkout test suite",
+            "progress": 0.72,
+            "minutes": 23,
+            "cost": 1.84,
+            "seed": 3
+        },
+        {
+            "id": "cx12",
+            "unit": "CX-12",
+            "name": "Sprocket",
+            "provider": "codex",
+            "model": "GPT-5.1-Codex",
+            "role": "Builder",
+            "status": "working",
+            "project": "store",
+            "task": 415,
+            "step": "Wiring Apple Pay session endpoint",
+            "progress": 0.38,
+            "minutes": 14,
+            "cost": 0.92,
+            "seed": 8
+        },
+        {
+            "id": "cl02",
+            "unit": "CL-02",
+            "name": "Lumen",
+            "provider": "claude",
+            "model": "Sonnet 5.5",
+            "role": "Reviewer",
+            "status": "needs",
+            "project": "store",
+            "task": 405,
+            "step": "PR #418 approved by me, waiting for your merge",
+            "progress": 1,
+            "minutes": 41,
+            "cost": 0.62,
+            "seed": 5
+        },
+        {
+            "id": "cx04",
+            "unit": "CX-04",
+            "name": "Torque",
+            "provider": "codex",
+            "model": "GPT-5.1-Codex",
+            "role": "Builder",
+            "status": "working",
+            "project": "billing",
+            "task": 88,
+            "step": "Writing migration 0042_line_item_tax",
+            "progress": 0.41,
+            "minutes": 12,
+            "cost": 0.97,
+            "seed": 11
+        },
+        {
+            "id": "cl05",
+            "unit": "CL-05",
+            "name": "Gauge",
+            "provider": "claude",
+            "model": "Haiku 5.5",
+            "role": "Tester",
+            "status": "working",
+            "project": "billing",
+            "task": 91,
+            "step": "Generating property tests for proration",
+            "progress": 0.58,
+            "minutes": 9,
+            "cost": 0.11,
+            "seed": 2
+        },
+        {
+            "id": "cl01",
+            "unit": "CL-01",
+            "name": "Atlas",
+            "provider": "claude",
+            "model": "Opus 5.5",
+            "role": "Planner",
+            "status": "blocked",
+            "project": "core",
+            "task": 203,
+            "step": "Needs read access to droids/infra",
+            "progress": 0.3,
+            "minutes": 64,
+            "cost": 2.4,
+            "seed": 7
+        },
+        {
+            "id": "cx09",
+            "unit": "CX-09",
+            "name": "Servo",
+            "provider": "codex",
+            "model": "GPT-5.1-Codex",
+            "role": "Builder",
+            "status": "working",
+            "project": "core",
+            "task": 198,
+            "step": "Implementing heartbeat endpoint",
+            "progress": 0.83,
+            "minutes": 37,
+            "cost": 1.12,
+            "seed": 13
+        },
+        {
+            "id": "cx15",
+            "unit": "CX-15",
+            "name": "Flux",
+            "provider": "codex",
+            "model": "GPT-5.1-Codex-Mini",
+            "role": "Tester",
+            "status": "needs",
+            "project": "core",
+            "task": 201,
+            "step": "Found 2 regressions, asking which to fix first",
+            "progress": 0.9,
+            "minutes": 18,
+            "cost": 0.08,
+            "seed": 4
+        },
+        {
+            "id": "cl09",
+            "unit": "CL-09",
+            "name": "Quill",
+            "provider": "claude",
+            "model": "Sonnet 5.5",
+            "role": "Builder",
+            "status": "working",
+            "project": "ink",
+            "task": 57,
+            "step": "Adding --json flag to ink status",
+            "progress": 0.25,
+            "minutes": 6,
+            "cost": 0.21,
+            "seed": 10
+        },
+        {
+            "id": "cl11",
+            "unit": "CL-11",
+            "name": "Pixel",
+            "provider": "claude",
+            "model": "Haiku 5.5",
+            "role": "Docs",
+            "status": "idle",
+            "project": "ink",
+            "task": null,
+            "step": "",
+            "progress": 0,
+            "minutes": 0,
+            "cost": 0,
+            "seed": 6
+        },
+        {
+            "id": "cx21",
+            "unit": "CX-21",
+            "name": "Ratchet",
+            "provider": "codex",
+            "model": "GPT-5.1-Codex-Mini",
+            "role": "Reviewer",
+            "status": "idle",
+            "project": "billing",
+            "task": null,
+            "step": "",
+            "progress": 0,
+            "minutes": 0,
+            "cost": 0,
+            "seed": 9
+        }
+    ],
+    "issues": [
+        {
+            "n": 412,
+            "project": "store",
+            "title": "Checkout fails when coupon and gift card are combined",
+            "col": "progress",
+            "labels": ["bug", "checkout"],
+            "builder": "cl07"
+        },
+        {
+            "n": 415,
+            "project": "store",
+            "title": "Add Apple Pay to express checkout",
+            "col": "progress",
+            "labels": ["feature"],
+            "builder": "cx12",
+            "reviewer": "cl02"
+        },
+        {
+            "n": 405,
+            "project": "store",
+            "title": "Lazy-load product images on listing pages",
+            "col": "review",
+            "labels": ["perf"],
+            "builder": "cx12",
+            "reviewer": "cl02"
+        },
+        {
+            "n": 416,
+            "project": "store",
+            "title": "Cart badge count does not update after removing an item",
+            "col": "ready",
+            "labels": ["bug"]
+        },
+        {
+            "n": 420,
+            "project": "store",
+            "title": "Move analytics to server-side events",
+            "col": "backlog",
+            "labels": ["infra"]
+        },
+        {
+            "n": 399,
+            "project": "store",
+            "title": "Upgrade to Laravel 13",
+            "col": "done",
+            "labels": ["chore"],
+            "builder": "cl07"
+        },
+        {
+            "n": 88,
+            "project": "billing",
+            "title": "Invoice line items: support tax-inclusive pricing",
+            "col": "progress",
+            "labels": ["feature"],
+            "builder": "cx04"
+        },
+        {
+            "n": 91,
+            "project": "billing",
+            "title": "Proration is off by one cent on plan downgrade",
+            "col": "progress",
+            "labels": ["bug"],
+            "builder": "cl05"
+        },
+        {
+            "n": 93,
+            "project": "billing",
+            "title": "Webhook retries with exponential backoff",
+            "col": "ready",
+            "labels": ["reliability"]
+        },
+        {
+            "n": 95,
+            "project": "billing",
+            "title": "Usage-based metering for API calls",
+            "col": "backlog",
+            "labels": ["feature"]
+        },
+        {
+            "n": 84,
+            "project": "billing",
+            "title": "Dunning email schedule",
+            "col": "done",
+            "labels": ["feature"],
+            "builder": "cx04",
+            "reviewer": "cx21"
+        },
+        {
+            "n": 203,
+            "project": "core",
+            "title": "Plan multi-repo droid workspaces",
+            "col": "progress",
+            "labels": ["planning"],
+            "builder": "cl01"
+        },
+        {
+            "n": 198,
+            "project": "core",
+            "title": "Droid heartbeat and stale-run detection",
+            "col": "progress",
+            "labels": ["feature"],
+            "builder": "cx09"
+        },
+        {
+            "n": 201,
+            "project": "core",
+            "title": "Run history retention policy",
+            "col": "review",
+            "labels": ["feature"],
+            "builder": "cx09",
+            "reviewer": "cx15"
+        },
+        {
+            "n": 205,
+            "project": "core",
+            "title": "Per-droid cost budgets and alerts",
+            "col": "ready",
+            "labels": ["feature"]
+        },
+        {
+            "n": 207,
+            "project": "core",
+            "title": "Notify Slack when a droid is blocked",
+            "col": "backlog",
+            "labels": ["integration"]
+        },
+        {
+            "n": 190,
+            "project": "core",
+            "title": "Sandboxed shell per droid",
+            "col": "done",
+            "labels": ["security"],
+            "builder": "cl01"
+        },
+        {
+            "n": 57,
+            "project": "ink",
+            "title": "ink status --json output",
+            "col": "progress",
+            "labels": ["feature"],
+            "builder": "cl09"
+        },
+        {
+            "n": 60,
+            "project": "ink",
+            "title": "Write the getting-started guide",
+            "col": "ready",
+            "labels": ["docs"]
+        },
+        {
+            "n": 61,
+            "project": "ink",
+            "title": "Windows path handling in config loader",
+            "col": "ready",
+            "labels": ["bug"]
+        },
+        {
+            "n": 63,
+            "project": "ink",
+            "title": "Plugin API proposal",
+            "col": "backlog",
+            "labels": ["rfc"]
+        },
+        {
+            "n": 52,
+            "project": "ink",
+            "title": "Homebrew formula",
+            "col": "done",
+            "labels": ["release"],
+            "builder": "cl09"
+        }
+    ],
+    "feed": [
+        {
+            "droid": "cx09",
+            "text": "Ran core suite \u00b7 389 passed",
+            "min": 1
+        },
+        {
+            "droid": "cl02",
+            "text": "Approved PR #418 from CX-12, waiting for your merge",
+            "min": 3
+        },
+        {
+            "droid": "cl07",
+            "text": "Pushed fix/412-coupon-giftcard",
+            "min": 4
+        },
+        {
+            "droid": "cx12",
+            "text": "Picked up #415 Apple Pay, CL-02 will review",
+            "min": 6
+        },
+        {
+            "droid": "cx15",
+            "text": "Asked which regression to fix first",
+            "min": 7
+        },
+        {
+            "droid": "cx04",
+            "text": "Started #88 tax-inclusive pricing",
+            "min": 12
+        },
+        {
+            "droid": "cl01",
+            "text": "Blocked: needs droids/infra access",
+            "min": 15
+        },
+        {
+            "droid": "cx21",
+            "text": "Reviewed and merged PR #86 for #84",
+            "min": 52
+        }
+    ],
+    "chats": {
+        "cl07": [
+            {
+                "kind": "agent",
+                "reasoning": "The total is recomputed in applyGiftCard() from cart.subtotal, which ignores the coupon discount applied earlier. The fix is to compute from the discounted subtotal and add a regression test for the coupon then gift card order.",
+                "text": "Picked up **#412**. Reproduced it: applying a gift card after a coupon recomputes the total from the pre-discount subtotal."
+            },
+            {
+                "kind": "task",
+                "title": "Edited 2 files",
+                "items": [
+                    "src/checkout/totals.ts (+38 \u221212)",
+                    "src/checkout/__tests__/totals.test.ts (+64)"
+                ]
+            },
+            {
+                "kind": "tool",
+                "name": "run_tests",
+                "title": "npm test -- checkout",
+                "state": "input-available",
+                "input": {
+                    "command": "npm test -- checkout",
+                    "cwd": "acme/storefront"
+                }
+            },
+            {
+                "kind": "agent",
+                "text": "Fix is in. Running the checkout suite now, and I'll open a PR when it's green. CX-12 is on #415 in the same area, so I've kept my change inside `totals.ts` to avoid conflicts."
+            }
+        ],
+        "cl02": [
+            {
+                "kind": "tool",
+                "name": "github_checks",
+                "title": "Checks on PR #418",
+                "state": "output-available",
+                "input": {
+                    "pr": 418,
+                    "repo": "acme/storefront"
+                },
+                "output": "6 of 6 checks passed\nlint \u2713  typecheck \u2713  unit \u2713  e2e \u2713  lighthouse \u2713  preview \u2713"
+            },
+            {
+                "kind": "agent",
+                "text": "Reviewed **PR #418** from CX-12 (Codex) for #405. Images below the fold now lazy-load, and LCP on `/shoes` dropped from **3.1 s to 1.9 s** in the preview deploy.\n\nShould I merge it, or send it back to CX-12 with notes?"
+            }
+        ],
+        "cl01": [
+            {
+                "kind": "plan",
+                "title": "Multi-repo droid workspaces",
+                "description": "Draft plan for #203, waiting on infra access before step 3.",
+                "steps": [
+                    "Model a workspace as a set of repos with one primary",
+                    "Give each droid a sandbox per workspace, not per repo",
+                    "Read runner Terraform in droids/infra to size sandboxes",
+                    "Cross-repo PRs: one branch name, linked PRs"
+                ]
+            },
+            {
+                "kind": "agent",
+                "text": "To finish the plan I need to read **droids/infra**, where the runner Terraform lives. Can you grant read access, or should I plan without it?"
+            }
+        ],
+        "cx15": [
+            {
+                "kind": "tool",
+                "name": "run_tests",
+                "title": "pytest tests/retention",
+                "state": "output-error",
+                "input": {
+                    "command": "pytest tests/retention -q"
+                },
+                "error": "2 failed, 310 passed\nFAILED test_prune_keeps_runs_with_open_prs\nFAILED test_prune_skips_pinned_runs"
+            },
+            {
+                "kind": "agent",
+                "text": "Two regressions in CX-09's run-history pruning: runs older than 30 days are kept when they have open PRs, and pinned runs get deleted. Which should I fix first?"
+            }
+        ]
+    },
+    "subs": [
+        {
+            "id": "max",
+            "provider": "claude",
+            "name": "Claude Max",
+            "account": "Personal",
+            "auth": "Signed in with Claude",
+            "color": "oklch(0.64 0.14 40)",
+            "windows": [
+                {
+                    "label": "5-hour window",
+                    "used": 0.62,
+                    "resets": "resets 12:40 AM"
+                },
+                {
+                    "label": "Weekly limit",
+                    "used": 0.41,
+                    "resets": "resets Mon 9:00 AM"
+                }
+            ],
+            "week": [0.3, 0.42, 0.35, 0.51, 0.62, 0.2, 0.12]
+        },
+        {
+            "id": "team",
+            "provider": "claude",
+            "name": "Claude Team",
+            "account": "Acme workspace",
+            "auth": "Signed in with Claude",
+            "color": "oklch(0.47 0.11 35)",
+            "windows": [
+                {
+                    "label": "5-hour window",
+                    "used": 0.18,
+                    "resets": "resets 2:05 AM"
+                },
+                {
+                    "label": "Weekly limit",
+                    "used": 0.55,
+                    "resets": "resets Mon 9:00 AM"
+                }
+            ],
+            "week": [0.6, 0.72, 0.66, 0.58, 0.18, 0, 0]
+        },
+        {
+            "id": "pro",
+            "provider": "codex",
+            "name": "ChatGPT Pro",
+            "account": "Personal",
+            "auth": "Signed in with ChatGPT",
+            "color": "oklch(0.6 0.17 275)",
+            "windows": [
+                {
+                    "label": "5-hour window",
+                    "used": 0.74,
+                    "resets": "resets 11:55 PM"
+                },
+                {
+                    "label": "Weekly limit",
+                    "used": 0.38,
+                    "resets": "resets Sun 8:00 PM"
+                }
+            ],
+            "week": [0.22, 0.31, 0.4, 0.37, 0.74, 0.33, 0.28]
+        },
+        {
+            "id": "api",
+            "provider": "codex",
+            "name": "Codex API key",
+            "account": "Acme billing",
+            "auth": "API key \u2022\u2022\u2022\u20227f2c",
+            "color": "oklch(0.42 0.14 265)",
+            "windows": [],
+            "spend": {
+                "used": 42.1,
+                "cap": 150
+            },
+            "week": [0.5, 0.64, 0.58, 0.7, 0.21, 0, 0]
+        }
+    ],
+    "schedule": {
+        "claude": [
+            [
+                "max",
+                "max",
+                "",
+                "",
+                "",
+                "",
+                "max",
+                "max",
+                "max",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max"
+            ],
+            [
+                "max",
+                "max",
+                "",
+                "",
+                "",
+                "",
+                "max",
+                "max",
+                "max",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max"
+            ],
+            [
+                "max",
+                "max",
+                "",
+                "",
+                "",
+                "",
+                "max",
+                "max",
+                "max",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max"
+            ],
+            [
+                "max",
+                "max",
+                "",
+                "",
+                "",
+                "",
+                "max",
+                "max",
+                "max",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max"
+            ],
+            [
+                "max",
+                "max",
+                "",
+                "",
+                "",
+                "",
+                "max",
+                "max",
+                "max",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "team",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max"
+            ],
+            [
+                "max",
+                "max",
+                "",
+                "",
+                "",
+                "",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max"
+            ],
+            [
+                "max",
+                "max",
+                "",
+                "",
+                "",
+                "",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max",
+                "max"
+            ]
+        ],
+        "codex": [
+            [
+                "pro",
+                "pro",
+                "",
+                "",
+                "",
+                "",
+                "pro",
+                "pro",
+                "pro",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro"
+            ],
+            [
+                "pro",
+                "pro",
+                "",
+                "",
+                "",
+                "",
+                "pro",
+                "pro",
+                "pro",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro"
+            ],
+            [
+                "pro",
+                "pro",
+                "",
+                "",
+                "",
+                "",
+                "pro",
+                "pro",
+                "pro",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro"
+            ],
+            [
+                "pro",
+                "pro",
+                "",
+                "",
+                "",
+                "",
+                "pro",
+                "pro",
+                "pro",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro"
+            ],
+            [
+                "pro",
+                "pro",
+                "",
+                "",
+                "",
+                "",
+                "pro",
+                "pro",
+                "pro",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "api",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro"
+            ],
+            [
+                "pro",
+                "pro",
+                "",
+                "",
+                "",
+                "",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro"
+            ],
+            [
+                "pro",
+                "pro",
+                "",
+                "",
+                "",
+                "",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro",
+                "pro"
+            ]
+        ]
+    },
+    "prs": {
+        "store:412": {
+            "n": 421,
+            "title": "fix(checkout): apply gift card to discounted subtotal",
+            "branch": "droid/cl-07/412",
+            "state": "draft",
+            "add": 102,
+            "del": 12,
+            "commits": 3,
+            "files": 2,
+            "checks": [
+                {
+                    "name": "lint",
+                    "state": "pass",
+                    "dur": "38s"
+                },
+                {
+                    "name": "typecheck",
+                    "state": "pass",
+                    "dur": "1m 02s"
+                },
+                {
+                    "name": "unit",
+                    "state": "running"
+                },
+                {
+                    "name": "e2e (checkout)",
+                    "state": "pending"
+                },
+                {
+                    "name": "preview deploy",
+                    "state": "pass",
+                    "dur": "2m 11s"
+                }
+            ],
+            "reviews": []
+        },
+        "store:415": {
+            "n": 423,
+            "title": "feat(checkout): Apple Pay in express checkout",
+            "branch": "droid/cx-12/415",
+            "state": "open",
+            "add": 418,
+            "del": 37,
+            "commits": 6,
+            "files": 9,
+            "checks": [
+                {
+                    "name": "lint",
+                    "state": "pass",
+                    "dur": "41s"
+                },
+                {
+                    "name": "typecheck",
+                    "state": "fail",
+                    "dur": "58s"
+                },
+                {
+                    "name": "unit",
+                    "state": "pass",
+                    "dur": "3m 20s"
+                },
+                {
+                    "name": "e2e (checkout)",
+                    "state": "pending"
+                },
+                {
+                    "name": "preview deploy",
+                    "state": "pass",
+                    "dur": "2m 04s"
+                }
+            ],
+            "reviews": [
+                {
+                    "by": "cl02",
+                    "state": "requested"
+                }
+            ]
+        },
+        "store:405": {
+            "n": 418,
+            "title": "perf(plp): lazy-load images below the fold",
+            "branch": "droid/cx-12/405",
+            "state": "approved",
+            "add": 64,
+            "del": 21,
+            "commits": 2,
+            "files": 4,
+            "checks": [
+                {
+                    "name": "lint",
+                    "state": "pass",
+                    "dur": "36s"
+                },
+                {
+                    "name": "typecheck",
+                    "state": "pass",
+                    "dur": "57s"
+                },
+                {
+                    "name": "unit",
+                    "state": "pass",
+                    "dur": "3m 01s"
+                },
+                {
+                    "name": "e2e (checkout)",
+                    "state": "pass",
+                    "dur": "6m 40s"
+                },
+                {
+                    "name": "lighthouse",
+                    "state": "pass",
+                    "dur": "1m 50s"
+                },
+                {
+                    "name": "preview deploy",
+                    "state": "pass",
+                    "dur": "2m 09s"
+                }
+            ],
+            "reviews": [
+                {
+                    "by": "cl02",
+                    "state": "approved"
+                }
+            ]
+        },
+        "billing:88": {
+            "n": 97,
+            "title": "feat(invoices): tax-inclusive line items",
+            "branch": "droid/cx-04/88",
+            "state": "draft",
+            "add": 233,
+            "del": 40,
+            "commits": 4,
+            "files": 7,
+            "checks": [
+                {
+                    "name": "lint",
+                    "state": "pass",
+                    "dur": "22s"
+                },
+                {
+                    "name": "migrations",
+                    "state": "running"
+                },
+                {
+                    "name": "tests",
+                    "state": "pending"
+                }
+            ],
+            "reviews": []
+        },
+        "core:198": {
+            "n": 211,
+            "title": "feat(runs): heartbeat and stale-run detection",
+            "branch": "droid/cx-09/198",
+            "state": "open",
+            "add": 311,
+            "del": 58,
+            "commits": 5,
+            "files": 8,
+            "checks": [
+                {
+                    "name": "lint",
+                    "state": "pass",
+                    "dur": "29s"
+                },
+                {
+                    "name": "unit",
+                    "state": "pass",
+                    "dur": "4m 12s"
+                },
+                {
+                    "name": "integration",
+                    "state": "running"
+                }
+            ],
+            "reviews": []
+        },
+        "core:201": {
+            "n": 209,
+            "title": "feat(history): retention policy for runs",
+            "branch": "droid/cx-09/201",
+            "state": "changes",
+            "add": 190,
+            "del": 33,
+            "commits": 4,
+            "files": 5,
+            "checks": [
+                {
+                    "name": "lint",
+                    "state": "pass",
+                    "dur": "27s"
+                },
+                {
+                    "name": "unit",
+                    "state": "fail",
+                    "dur": "3m 48s"
+                },
+                {
+                    "name": "integration",
+                    "state": "pass",
+                    "dur": "5m 02s"
+                }
+            ],
+            "reviews": [
+                {
+                    "by": "cx15",
+                    "state": "changes"
+                }
+            ]
+        },
+        "ink:57": {
+            "n": 66,
+            "title": "feat(status): --json output",
+            "branch": "droid/cl-09/57",
+            "state": "draft",
+            "add": 88,
+            "del": 9,
+            "commits": 1,
+            "files": 3,
+            "checks": [
+                {
+                    "name": "test (macos)",
+                    "state": "running"
+                },
+                {
+                    "name": "test (windows)",
+                    "state": "running"
+                },
+                {
+                    "name": "test (linux)",
+                    "state": "pass",
+                    "dur": "1m 12s"
+                }
+            ],
+            "reviews": []
+        },
+        "store:399": {
+            "n": 402,
+            "title": "chore: upgrade to Laravel 13",
+            "branch": "droid/cl-07/399",
+            "state": "merged",
+            "add": 540,
+            "del": 498,
+            "commits": 8,
+            "files": 31,
+            "checks": [
+                {
+                    "name": "lint",
+                    "state": "pass",
+                    "dur": "40s"
+                },
+                {
+                    "name": "typecheck",
+                    "state": "pass",
+                    "dur": "1m 10s"
+                },
+                {
+                    "name": "unit",
+                    "state": "pass",
+                    "dur": "3m 05s"
+                },
+                {
+                    "name": "e2e (checkout)",
+                    "state": "pass",
+                    "dur": "6m 51s"
+                }
+            ],
+            "reviews": [
+                {
+                    "by": "vtalbot",
+                    "state": "approved"
+                }
+            ]
+        }
+    },
+    "roadmap": {
+        "store": [
+            {
+                "id": "m1",
+                "name": "v3.1 catalog",
+                "due": "Nov 7",
+                "state": "done",
+                "goal": "Faster listing pages and search",
+                "features": [
+                    {
+                        "id": "f1",
+                        "name": "Search relevance",
+                        "tasks": [
+                            {
+                                "n": 371,
+                                "title": "Typo-tolerant search",
+                                "done": true
+                            },
+                            {
+                                "n": 374,
+                                "title": "Boost in-stock products",
+                                "done": true
+                            },
+                            {
+                                "n": 380,
+                                "title": "Search analytics events",
+                                "done": true
+                            }
+                        ]
+                    },
+                    {
+                        "id": "f2",
+                        "name": "Listing performance",
+                        "tasks": [
+                            {
+                                "n": 385,
+                                "title": "Cache facet counts",
+                                "done": true
+                            },
+                            {
+                                "n": 390,
+                                "title": "Paginate with cursors",
+                                "done": true
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "id": "m2",
+                "name": "v3.2 checkout",
+                "due": "Dec 12",
+                "state": "active",
+                "goal": "One-tap checkout with fewer failed payments",
+                "features": [
+                    {
+                        "id": "f3",
+                        "name": "Express checkout",
+                        "tasks": [
+                            {
+                                "n": 415,
+                                "title": "Add Apple Pay to express checkout"
+                            },
+                            {
+                                "n": 408,
+                                "title": "Google Pay button",
+                                "done": true
+                            },
+                            {
+                                "n": 409,
+                                "title": "Express checkout layout",
+                                "done": true
+                            }
+                        ]
+                    },
+                    {
+                        "id": "f4",
+                        "name": "Discounts that stack",
+                        "tasks": [
+                            {
+                                "n": 412,
+                                "title": "Checkout fails when coupon and gift card are combined"
+                            },
+                            {
+                                "n": 401,
+                                "title": "Gift card balance check",
+                                "done": true
+                            },
+                            {
+                                "n": 403,
+                                "title": "Coupon rules engine",
+                                "done": true
+                            }
+                        ]
+                    },
+                    {
+                        "id": "f5",
+                        "name": "Cart reliability",
+                        "tasks": [
+                            {
+                                "n": 416,
+                                "title": "Cart badge count does not update after removing an item"
+                            },
+                            {
+                                "n": 395,
+                                "title": "Persist cart across devices",
+                                "done": true
+                            }
+                        ]
+                    },
+                    {
+                        "id": "f6",
+                        "name": "Image performance",
+                        "tasks": [
+                            {
+                                "n": 405,
+                                "title": "Lazy-load product images on listing pages"
+                            },
+                            {
+                                "n": 399,
+                                "title": "Upgrade to Laravel 13",
+                                "done": true
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "id": "m3",
+                "name": "v3.3 insights",
+                "due": "Jan 23",
+                "state": "planned",
+                "goal": "Know what shoppers do without client-side trackers",
+                "features": [
+                    {
+                        "id": "f7",
+                        "name": "Server-side analytics",
+                        "tasks": [
+                            {
+                                "n": 420,
+                                "title": "Move analytics to server-side events"
+                            }
+                        ]
+                    }
+                ]
+            }
+        ],
+        "billing": [
+            {
+                "id": "m1",
+                "name": "Tax compliance",
+                "due": "Dec 19",
+                "state": "active",
+                "goal": "Invoices valid in CA, US and EU",
+                "features": [
+                    {
+                        "id": "f1",
+                        "name": "Tax-inclusive pricing",
+                        "tasks": [
+                            {
+                                "n": 88,
+                                "title": "Invoice line items: support tax-inclusive pricing"
+                            },
+                            {
+                                "n": 80,
+                                "title": "Tax fields on products",
+                                "done": true
+                            }
+                        ]
+                    },
+                    {
+                        "id": "f2",
+                        "name": "Proration accuracy",
+                        "tasks": [
+                            {
+                                "n": 91,
+                                "title": "Proration is off by one cent on plan downgrade"
+                            },
+                            {
+                                "n": 77,
+                                "title": "Proration audit log",
+                                "done": true
+                            }
+                        ]
+                    },
+                    {
+                        "id": "f3",
+                        "name": "Dunning",
+                        "tasks": [
+                            {
+                                "n": 84,
+                                "title": "Dunning email schedule",
+                                "done": true
+                            },
+                            {
+                                "n": 82,
+                                "title": "Retry failed cards",
+                                "done": true
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "id": "m2",
+                "name": "Usage billing",
+                "due": "Feb 6",
+                "state": "planned",
+                "goal": "Bill API customers by usage",
+                "features": [
+                    {
+                        "id": "f4",
+                        "name": "Metering",
+                        "tasks": [
+                            {
+                                "n": 95,
+                                "title": "Usage-based metering for API calls"
+                            }
+                        ]
+                    },
+                    {
+                        "id": "f5",
+                        "name": "Reliable webhooks",
+                        "tasks": [
+                            {
+                                "n": 93,
+                                "title": "Webhook retries with exponential backoff"
+                            }
+                        ]
+                    }
+                ]
+            }
+        ],
+        "core": [
+            {
+                "id": "m1",
+                "name": "Multi-repo runs",
+                "due": "Jan 9",
+                "state": "active",
+                "goal": "One droid can change several repos in one task",
+                "features": [
+                    {
+                        "id": "f1",
+                        "name": "Workspaces",
+                        "tasks": [
+                            {
+                                "n": 203,
+                                "title": "Plan multi-repo droid workspaces"
+                            },
+                            {
+                                "n": 190,
+                                "title": "Sandboxed shell per droid",
+                                "done": true
+                            }
+                        ]
+                    },
+                    {
+                        "id": "f2",
+                        "name": "Run reliability",
+                        "tasks": [
+                            {
+                                "n": 198,
+                                "title": "Droid heartbeat and stale-run detection"
+                            },
+                            {
+                                "n": 201,
+                                "title": "Run history retention policy"
+                            }
+                        ]
+                    },
+                    {
+                        "id": "f3",
+                        "name": "Budgets",
+                        "tasks": [
+                            {
+                                "n": 205,
+                                "title": "Per-droid cost budgets and alerts"
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "id": "m2",
+                "name": "Team notifications",
+                "due": "Feb 13",
+                "state": "planned",
+                "goal": "Know when droids need you, wherever you are",
+                "features": [
+                    {
+                        "id": "f4",
+                        "name": "Slack",
+                        "tasks": [
+                            {
+                                "n": 207,
+                                "title": "Notify Slack when a droid is blocked"
+                            }
+                        ]
+                    }
+                ]
+            }
+        ],
+        "ink": [
+            {
+                "id": "m1",
+                "name": "1.0 release",
+                "due": "Dec 5",
+                "state": "active",
+                "goal": "Stable CLI with docs and installers",
+                "features": [
+                    {
+                        "id": "f1",
+                        "name": "Machine-readable output",
+                        "tasks": [
+                            {
+                                "n": 57,
+                                "title": "ink status --json output"
+                            },
+                            {
+                                "n": 50,
+                                "title": "--quiet flag",
+                                "done": true
+                            }
+                        ]
+                    },
+                    {
+                        "id": "f2",
+                        "name": "Docs",
+                        "tasks": [
+                            {
+                                "n": 60,
+                                "title": "Write the getting-started guide"
+                            }
+                        ]
+                    },
+                    {
+                        "id": "f3",
+                        "name": "Installers",
+                        "tasks": [
+                            {
+                                "n": 52,
+                                "title": "Homebrew formula",
+                                "done": true
+                            },
+                            {
+                                "n": 61,
+                                "title": "Windows path handling in config loader"
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "id": "m2",
+                "name": "Plugins",
+                "due": "Mar 6",
+                "state": "planned",
+                "goal": "Let others extend ink",
+                "features": [
+                    {
+                        "id": "f4",
+                        "name": "Plugin API",
+                        "tasks": [
+                            {
+                                "n": 63,
+                                "title": "Plugin API proposal"
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    },
+    "stats": {
+        "store": {
+            "burn": [
+                {
+                    "scope": 30,
+                    "done": 4
+                },
+                {
+                    "scope": 32,
+                    "done": 8
+                },
+                {
+                    "scope": 34,
+                    "done": 12
+                },
+                {
+                    "scope": 36,
+                    "done": 15
+                },
+                {
+                    "scope": 38,
+                    "done": 20
+                },
+                {
+                    "scope": 40,
+                    "done": 24
+                },
+                {
+                    "scope": 42,
+                    "done": 28
+                },
+                {
+                    "scope": 44,
+                    "done": 31
+                }
+            ],
+            "thru": [
+                {
+                    "claude": 2,
+                    "codex": 2
+                },
+                {
+                    "claude": 3,
+                    "codex": 1
+                },
+                {
+                    "claude": 2,
+                    "codex": 3
+                },
+                {
+                    "claude": 1,
+                    "codex": 2
+                },
+                {
+                    "claude": 3,
+                    "codex": 3
+                },
+                {
+                    "claude": 2,
+                    "codex": 2
+                },
+                {
+                    "claude": 2,
+                    "codex": 3
+                },
+                {
+                    "claude": 1,
+                    "codex": 2
+                }
+            ],
+            "cycle": [30, 26, 28, 22, 19, 21, 16, 14],
+            "spend": [
+                {
+                    "claude": 9,
+                    "codex": 5
+                },
+                {
+                    "claude": 11,
+                    "codex": 6
+                },
+                {
+                    "claude": 10,
+                    "codex": 8
+                },
+                {
+                    "claude": 8,
+                    "codex": 7
+                },
+                {
+                    "claude": 12,
+                    "codex": 9
+                },
+                {
+                    "claude": 13,
+                    "codex": 8
+                },
+                {
+                    "claude": 11,
+                    "codex": 10
+                },
+                {
+                    "claude": 9,
+                    "codex": 7
+                }
+            ],
+            "ci": 0.86
+        },
+        "billing": {
+            "burn": [
+                {
+                    "scope": 25,
+                    "done": 2
+                },
+                {
+                    "scope": 27,
+                    "done": 5
+                },
+                {
+                    "scope": 29,
+                    "done": 7
+                },
+                {
+                    "scope": 31,
+                    "done": 9
+                },
+                {
+                    "scope": 33,
+                    "done": 11
+                },
+                {
+                    "scope": 35,
+                    "done": 14
+                },
+                {
+                    "scope": 36,
+                    "done": 16
+                },
+                {
+                    "scope": 37,
+                    "done": 18
+                }
+            ],
+            "thru": [
+                {
+                    "claude": 1,
+                    "codex": 1
+                },
+                {
+                    "claude": 1,
+                    "codex": 2
+                },
+                {
+                    "claude": 1,
+                    "codex": 1
+                },
+                {
+                    "claude": 0,
+                    "codex": 2
+                },
+                {
+                    "claude": 1,
+                    "codex": 1
+                },
+                {
+                    "claude": 2,
+                    "codex": 1
+                },
+                {
+                    "claude": 1,
+                    "codex": 1
+                },
+                {
+                    "claude": 1,
+                    "codex": 1
+                }
+            ],
+            "cycle": [40, 36, 35, 33, 30, 31, 27, 25],
+            "spend": [
+                {
+                    "claude": 5,
+                    "codex": 6
+                },
+                {
+                    "claude": 6,
+                    "codex": 7
+                },
+                {
+                    "claude": 5,
+                    "codex": 6
+                },
+                {
+                    "claude": 4,
+                    "codex": 8
+                },
+                {
+                    "claude": 6,
+                    "codex": 7
+                },
+                {
+                    "claude": 7,
+                    "codex": 6
+                },
+                {
+                    "claude": 5,
+                    "codex": 8
+                },
+                {
+                    "claude": 4,
+                    "codex": 6
+                }
+            ],
+            "ci": 0.79
+        },
+        "core": {
+            "burn": [
+                {
+                    "scope": 28,
+                    "done": 1
+                },
+                {
+                    "scope": 30,
+                    "done": 3
+                },
+                {
+                    "scope": 31,
+                    "done": 4
+                },
+                {
+                    "scope": 33,
+                    "done": 6
+                },
+                {
+                    "scope": 35,
+                    "done": 7
+                },
+                {
+                    "scope": 37,
+                    "done": 9
+                },
+                {
+                    "scope": 39,
+                    "done": 11
+                },
+                {
+                    "scope": 40,
+                    "done": 12
+                }
+            ],
+            "thru": [
+                {
+                    "claude": 1,
+                    "codex": 0
+                },
+                {
+                    "claude": 1,
+                    "codex": 1
+                },
+                {
+                    "claude": 0,
+                    "codex": 1
+                },
+                {
+                    "claude": 1,
+                    "codex": 1
+                },
+                {
+                    "claude": 0,
+                    "codex": 1
+                },
+                {
+                    "claude": 1,
+                    "codex": 1
+                },
+                {
+                    "claude": 1,
+                    "codex": 1
+                },
+                {
+                    "claude": 0,
+                    "codex": 1
+                }
+            ],
+            "cycle": [52, 48, 50, 44, 41, 39, 36, 33],
+            "spend": [
+                {
+                    "claude": 7,
+                    "codex": 3
+                },
+                {
+                    "claude": 8,
+                    "codex": 4
+                },
+                {
+                    "claude": 9,
+                    "codex": 4
+                },
+                {
+                    "claude": 8,
+                    "codex": 5
+                },
+                {
+                    "claude": 10,
+                    "codex": 6
+                },
+                {
+                    "claude": 9,
+                    "codex": 6
+                },
+                {
+                    "claude": 11,
+                    "codex": 7
+                },
+                {
+                    "claude": 10,
+                    "codex": 6
+                }
+            ],
+            "ci": 0.74
+        },
+        "ink": {
+            "burn": [
+                {
+                    "scope": 20,
+                    "done": 8
+                },
+                {
+                    "scope": 21,
+                    "done": 11
+                },
+                {
+                    "scope": 23,
+                    "done": 14
+                },
+                {
+                    "scope": 24,
+                    "done": 17
+                },
+                {
+                    "scope": 26,
+                    "done": 20
+                },
+                {
+                    "scope": 27,
+                    "done": 22
+                },
+                {
+                    "scope": 28,
+                    "done": 24
+                },
+                {
+                    "scope": 29,
+                    "done": 26
+                }
+            ],
+            "thru": [
+                {
+                    "claude": 2,
+                    "codex": 1
+                },
+                {
+                    "claude": 1,
+                    "codex": 2
+                },
+                {
+                    "claude": 2,
+                    "codex": 1
+                },
+                {
+                    "claude": 2,
+                    "codex": 1
+                },
+                {
+                    "claude": 1,
+                    "codex": 2
+                },
+                {
+                    "claude": 1,
+                    "codex": 1
+                },
+                {
+                    "claude": 1,
+                    "codex": 1
+                },
+                {
+                    "claude": 1,
+                    "codex": 1
+                }
+            ],
+            "cycle": [20, 18, 17, 15, 14, 13, 12, 12],
+            "spend": [
+                {
+                    "claude": 3,
+                    "codex": 2
+                },
+                {
+                    "claude": 2,
+                    "codex": 3
+                },
+                {
+                    "claude": 3,
+                    "codex": 2
+                },
+                {
+                    "claude": 3,
+                    "codex": 2
+                },
+                {
+                    "claude": 2,
+                    "codex": 2
+                },
+                {
+                    "claude": 2,
+                    "codex": 1
+                },
+                {
+                    "claude": 2,
+                    "codex": 2
+                },
+                {
+                    "claude": 1,
+                    "codex": 2
+                }
+            ],
+            "ci": 0.93
+        }
+    },
+    "weeks": [
+        "Oct 6",
+        "Oct 13",
+        "Oct 20",
+        "Oct 27",
+        "Nov 3",
+        "Nov 10",
+        "Nov 17",
+        "Nov 24"
+    ],
+    "cloud": {
+        "store": {
+            "app": "storefront",
+            "org": "Acme",
+            "region": "ca-central-1",
+            "usage": 184.2,
+            "envs": [
+                {
+                    "id": "prod",
+                    "name": "production",
+                    "color": "green",
+                    "status": "running",
+                    "domain": "shop.acme.com",
+                    "branch": "main",
+                    "php": "8.4",
+                    "octane": true,
+                    "hibernation": false,
+                    "region": "ca-central-1",
+                    "instances": [
+                        {
+                            "name": "web",
+                            "type": "App",
+                            "size": "Pro 2 vCPU \u00b7 4 GB",
+                            "replicas": 3,
+                            "min": 2,
+                            "max": 8,
+                            "scaling": "auto",
+                            "cpu": 41,
+                            "mem": 58
+                        },
+                        {
+                            "name": "horizon",
+                            "type": "Worker",
+                            "size": "Flex 1 vCPU \u00b7 1 GB",
+                            "replicas": 1,
+                            "min": 1,
+                            "max": 3,
+                            "scaling": "auto",
+                            "cpu": 22,
+                            "mem": 47,
+                            "queue": "horizon"
+                        }
+                    ],
+                    "probes": [
+                        {
+                            "kind": "startup",
+                            "target": "GET /up",
+                            "ok": true,
+                            "last": "at boot"
+                        },
+                        {
+                            "kind": "readiness",
+                            "target": "GET /up",
+                            "ok": true,
+                            "last": "12 s ago"
+                        },
+                        {
+                            "kind": "liveness",
+                            "target": "TCP :8080",
+                            "ok": true,
+                            "last": "8 s ago"
+                        }
+                    ],
+                    "db": {
+                        "name": "storefront-pg",
+                        "engine": "Postgres 18",
+                        "preset": "prod",
+                        "storage": 0.46,
+                        "conns": "38 / 200"
+                    },
+                    "cache": {
+                        "name": "storefront-kv",
+                        "engine": "Valkey",
+                        "mem": 0.31,
+                        "hit": 0.94
+                    },
+                    "queue": {
+                        "pending": 12,
+                        "failed": 3
+                    },
+                    "scheduled": [
+                        {
+                            "cmd": "php artisan orders:reconcile",
+                            "cron": "*/15 * * * *",
+                            "last": "4 min ago",
+                            "ok": true
+                        },
+                        {
+                            "cmd": "php artisan sitemap:generate",
+                            "cron": "@daily",
+                            "last": "5 h ago",
+                            "ok": true
+                        }
+                    ]
+                },
+                {
+                    "id": "staging",
+                    "name": "staging",
+                    "color": "yellow",
+                    "status": "hibernating",
+                    "domain": "storefront-staging.laravel.cloud",
+                    "branch": "develop",
+                    "php": "8.4",
+                    "octane": true,
+                    "hibernation": true,
+                    "region": "ca-central-1",
+                    "instances": [
+                        {
+                            "name": "web",
+                            "type": "App",
+                            "size": "Flex 1 vCPU \u00b7 512 MB",
+                            "replicas": 0,
+                            "min": 0,
+                            "max": 1,
+                            "scaling": "custom",
+                            "cpu": 0,
+                            "mem": 0
+                        }
+                    ],
+                    "probes": [
+                        {
+                            "kind": "startup",
+                            "target": "GET /up",
+                            "ok": true,
+                            "last": "at boot"
+                        },
+                        {
+                            "kind": "readiness",
+                            "target": "GET /up",
+                            "ok": true,
+                            "last": "12 s ago"
+                        },
+                        {
+                            "kind": "liveness",
+                            "target": "TCP :8080",
+                            "ok": true,
+                            "last": "8 s ago"
+                        }
+                    ],
+                    "scheduled": []
+                },
+                {
+                    "id": "pr423",
+                    "name": "preview-pr-423",
+                    "color": "orange",
+                    "status": "deploying",
+                    "domain": "storefront-pr-423.laravel.cloud",
+                    "branch": "droid/cx-12/415",
+                    "php": "8.4",
+                    "octane": false,
+                    "hibernation": true,
+                    "region": "ca-central-1",
+                    "instances": [
+                        {
+                            "name": "web",
+                            "type": "App",
+                            "size": "Flex 1 vCPU \u00b7 512 MB",
+                            "replicas": 1,
+                            "min": 0,
+                            "max": 1,
+                            "scaling": "custom",
+                            "cpu": 12,
+                            "mem": 30
+                        }
+                    ],
+                    "probes": [
+                        {
+                            "kind": "startup",
+                            "target": "GET /up",
+                            "ok": true,
+                            "last": "at boot"
+                        },
+                        {
+                            "kind": "readiness",
+                            "target": "GET /up",
+                            "ok": false,
+                            "last": "12 s ago"
+                        },
+                        {
+                            "kind": "liveness",
+                            "target": "TCP :8080",
+                            "ok": true,
+                            "last": "8 s ago"
+                        }
+                    ],
+                    "scheduled": []
+                }
+            ],
+            "deployments": [
+                {
+                    "id": "d1",
+                    "env": "pr423",
+                    "status": "build.running",
+                    "commit": "9c41e2a",
+                    "message": "feat(checkout): Apple Pay session endpoint",
+                    "author": "CX-12 Sprocket",
+                    "branch": "droid/cx-12/415",
+                    "started": "1 min ago",
+                    "duration": "",
+                    "via": "Push to PR #423"
+                },
+                {
+                    "id": "d2",
+                    "env": "prod",
+                    "status": "deployment.succeeded",
+                    "commit": "e7a03b1",
+                    "message": "perf(plp): lazy-load images below the fold (#418)",
+                    "author": "CL-02 Lumen",
+                    "branch": "main",
+                    "started": "38 min ago",
+                    "duration": "2m 41s",
+                    "via": "Merge of PR #418"
+                },
+                {
+                    "id": "d3",
+                    "env": "prod",
+                    "status": "deployment.failed",
+                    "commit": "51d9f0c",
+                    "message": "chore: bump horizon to 6.2",
+                    "author": "vtalbot",
+                    "branch": "main",
+                    "started": "Yesterday 4:12 PM",
+                    "duration": "1m 58s",
+                    "via": "Push to main",
+                    "failure": "Deploy command failed: php artisan migrate --force\nSQLSTATE[42P07]: relation \"order_events\" already exists"
+                },
+                {
+                    "id": "d4",
+                    "env": "prod",
+                    "status": "deployment.succeeded",
+                    "commit": "0b7e6d4",
+                    "message": "chore: upgrade to Laravel 13 (#402)",
+                    "author": "CL-07 Rivet",
+                    "branch": "main",
+                    "started": "Mon 11:03 AM",
+                    "duration": "3m 12s",
+                    "via": "Merge of PR #402"
+                },
+                {
+                    "id": "d5",
+                    "env": "staging",
+                    "status": "deployment.succeeded",
+                    "commit": "f2c8a91",
+                    "message": "Merge develop",
+                    "author": "vtalbot",
+                    "branch": "develop",
+                    "started": "Mon 9:40 AM",
+                    "duration": "2m 05s",
+                    "via": "Push to develop"
+                }
+            ],
+            "cpu": [
+                51, 53, 54, 54, 52, 58, 53, 48, 41, 44, 37, 30, 24, 19, 24, 21,
+                20, 20, 30, 32, 35, 38, 41, 52
+            ],
+            "mem": [
+                62, 60, 66, 63, 60, 56, 61, 56, 52, 49, 45, 51, 49, 47, 46, 55,
+                55, 55, 55, 55, 64, 63, 63, 61
+            ],
+            "logs": [
+                "23:49:58 INFO  web.2  GET /checkout 200 84ms",
+                "23:49:57 INFO  web.1  POST /api/cart/items 201 41ms",
+                "23:49:55 WARN  horizon  Job App\\Jobs\\SyncInventory retried (attempt 2)",
+                "23:49:52 INFO  web.3  GET /shoes?page=2 200 63ms",
+                "23:49:50 ERROR horizon  App\\Jobs\\SendReceipt failed: SMTP timeout",
+                "23:49:47 INFO  web.1  GET /up 200 2ms"
+            ]
+        },
+        "billing": {
+            "app": "billing-api",
+            "org": "Acme",
+            "region": "us-east-2",
+            "usage": 96.4,
+            "envs": [
+                {
+                    "id": "prod",
+                    "name": "production",
+                    "color": "green",
+                    "status": "running",
+                    "domain": "billing.acme.com",
+                    "branch": "main",
+                    "php": "8.4",
+                    "octane": true,
+                    "hibernation": false,
+                    "region": "us-east-2",
+                    "instances": [
+                        {
+                            "name": "api",
+                            "type": "App",
+                            "size": "Pro 1 vCPU \u00b7 2 GB",
+                            "replicas": 2,
+                            "min": 2,
+                            "max": 6,
+                            "scaling": "auto",
+                            "cpu": 27,
+                            "mem": 44
+                        },
+                        {
+                            "name": "worker",
+                            "type": "Worker",
+                            "size": "Flex 1 vCPU \u00b7 1 GB",
+                            "replicas": 1,
+                            "min": 1,
+                            "max": 2,
+                            "scaling": "auto",
+                            "cpu": 15,
+                            "mem": 38,
+                            "queue": "managed"
+                        }
+                    ],
+                    "probes": [
+                        {
+                            "kind": "startup",
+                            "target": "GET /up",
+                            "ok": true,
+                            "last": "at boot"
+                        },
+                        {
+                            "kind": "readiness",
+                            "target": "GET /up",
+                            "ok": true,
+                            "last": "12 s ago"
+                        },
+                        {
+                            "kind": "liveness",
+                            "target": "TCP :8080",
+                            "ok": true,
+                            "last": "8 s ago"
+                        }
+                    ],
+                    "db": {
+                        "name": "billing-mysql",
+                        "engine": "MySQL 8",
+                        "preset": "prod",
+                        "storage": 0.62,
+                        "conns": "21 / 150"
+                    },
+                    "queue": {
+                        "pending": 0,
+                        "failed": 0
+                    },
+                    "scheduled": [
+                        {
+                            "cmd": "php artisan invoices:generate",
+                            "cron": "0 6 1 * *",
+                            "last": "Nov 1",
+                            "ok": true
+                        },
+                        {
+                            "cmd": "php artisan dunning:run",
+                            "cron": "@hourly",
+                            "last": "50 min ago",
+                            "ok": true
+                        }
+                    ]
+                }
+            ],
+            "deployments": [
+                {
+                    "id": "d1",
+                    "env": "prod",
+                    "status": "deployment.succeeded",
+                    "commit": "a11c0de",
+                    "message": "feat(dunning): email schedule (#86)",
+                    "author": "CX-21 Ratchet",
+                    "branch": "main",
+                    "started": "Today 2:15 PM",
+                    "duration": "2m 20s",
+                    "via": "Merge of PR #86"
+                }
+            ],
+            "cpu": [
+                28, 29, 29, 37, 36, 34, 31, 37, 33, 29, 25, 20, 25, 21, 17, 14,
+                21, 19, 18, 18, 18, 27, 28, 28
+            ],
+            "mem": [
+                47, 45, 53, 51, 49, 46, 43, 49, 45, 42, 39, 45, 42, 39, 37, 35,
+                43, 42, 41, 40, 49, 48, 47, 46
+            ],
+            "logs": [
+                "23:49:58 INFO  api.1  POST /v1/invoices 201 112ms",
+                "23:49:51 INFO  worker  dunning:run finished, 4 emails sent",
+                "23:49:44 INFO  api.2  GET /up 200 2ms"
+            ]
+        },
+        "core": {
+            "app": "factory-core",
+            "org": "Droids",
+            "region": "ca-central-1",
+            "usage": 61.8,
+            "envs": [
+                {
+                    "id": "prod",
+                    "name": "production",
+                    "color": "green",
+                    "status": "running",
+                    "domain": "core.droids.dev",
+                    "branch": "main",
+                    "php": "8.4",
+                    "octane": true,
+                    "hibernation": false,
+                    "region": "ca-central-1",
+                    "instances": [
+                        {
+                            "name": "web",
+                            "type": "App",
+                            "size": "Flex 2 vCPU \u00b7 2 GB",
+                            "replicas": 2,
+                            "min": 1,
+                            "max": 4,
+                            "scaling": "auto",
+                            "cpu": 63,
+                            "mem": 71
+                        },
+                        {
+                            "name": "runners",
+                            "type": "Worker",
+                            "size": "Pro 4 vCPU \u00b7 8 GB",
+                            "replicas": 3,
+                            "min": 2,
+                            "max": 10,
+                            "scaling": "auto",
+                            "cpu": 78,
+                            "mem": 66,
+                            "queue": "horizon"
+                        }
+                    ],
+                    "probes": [
+                        {
+                            "kind": "startup",
+                            "target": "GET /up",
+                            "ok": true,
+                            "last": "at boot"
+                        },
+                        {
+                            "kind": "readiness",
+                            "target": "GET /up",
+                            "ok": true,
+                            "last": "12 s ago"
+                        },
+                        {
+                            "kind": "liveness",
+                            "target": "TCP :8080",
+                            "ok": true,
+                            "last": "8 s ago"
+                        }
+                    ],
+                    "db": {
+                        "name": "core-pg",
+                        "engine": "Postgres 18",
+                        "preset": "scale",
+                        "storage": 0.71,
+                        "conns": "112 / 300"
+                    },
+                    "cache": {
+                        "name": "core-kv",
+                        "engine": "Valkey",
+                        "mem": 0.58,
+                        "hit": 0.89
+                    },
+                    "queue": {
+                        "pending": 41,
+                        "failed": 7
+                    },
+                    "scheduled": [
+                        {
+                            "cmd": "php artisan runs:prune",
+                            "cron": "@daily",
+                            "last": "Failed 2 h ago",
+                            "ok": false
+                        },
+                        {
+                            "cmd": "php artisan droids:heartbeat-check",
+                            "cron": "* * * * *",
+                            "last": "40 s ago",
+                            "ok": true
+                        }
+                    ]
+                }
+            ],
+            "deployments": [
+                {
+                    "id": "d1",
+                    "env": "prod",
+                    "status": "deployment.succeeded",
+                    "commit": "c3d2e1f",
+                    "message": "feat(sandbox): shell per droid (#195)",
+                    "author": "CL-01 Atlas",
+                    "branch": "main",
+                    "started": "Fri 3:30 PM",
+                    "duration": "4m 02s",
+                    "via": "Merge of PR #195"
+                }
+            ],
+            "cpu": [
+                78, 77, 75, 72, 77, 72, 67, 61, 55, 59, 53, 49, 45, 52, 51, 50,
+                51, 52, 63, 64, 66, 68, 77, 77
+            ],
+            "mem": [
+                72, 71, 70, 78, 77, 75, 73, 79, 76, 72, 69, 65, 70, 67, 64, 61,
+                68, 66, 65, 64, 63, 72, 72, 71
+            ],
+            "logs": [
+                "23:49:59 INFO  runners.2  droid cx09 heartbeat ok",
+                "23:49:58 WARN  runners.1  run r_8812 has no heartbeat for 75s",
+                "23:49:41 ERROR scheduler  runs:prune failed: deadlock detected"
+            ]
+        },
+        "ink": null
+    }
+}

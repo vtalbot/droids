@@ -1,27 +1,35 @@
-# Laravel + React Starter Kit
+# Droids
 
-## Introduction
+A software factory control room: Claude Code and Codex "droids" pick up GitHub
+Project issues, open PRs, review each other's work and ship to Laravel Cloud,
+while you watch, chat with them and steer.
 
-Our React starter kit provides a robust, modern starting point for building Laravel applications with a React frontend using [Inertia](https://inertiajs.com).
+Built with Laravel 13, Inertia and React 19, shadcn/ui and AI Elements, on the
+Laravel React starter kit.
 
-Inertia allows you to build modern, single-page React applications using classic server-side routing and controllers. This lets you enjoy the frontend power of React combined with the incredible backend productivity of Laravel and lightning-fast Vite compilation.
+## Screens
 
-This React starter kit utilizes React 19, TypeScript, Tailwind, and the [shadcn/ui](https://ui.shadcn.com) and [radix-ui](https://www.radix-ui.com) component libraries.
+- **Hangar**: every droid with its status, current task, live step and spend, plus activity.
+- **Projects**: milestone overview charts, roadmap (milestones > features > tasks), Laravel Cloud.
+- **Board**: GitHub Project columns with builder/reviewer pairing, PR and checks chips.
+- **Droids**: roster with engine, model, subscription in use, Reflect and Chat.
+- **Subscriptions**: Claude and Codex subscriptions with usage, weekly schedule and fallback rules.
 
-## Official Documentation
+## Getting started
 
-Documentation for all Laravel starter kits can be found on the [Laravel website](https://laravel.com/docs/starter-kits).
+```bash
+composer setup          # install, .env, key, migrate, npm install, build
+php artisan db:seed     # test@example.com / password, plus the sample factory
+composer dev            # app, queue, logs and Vite
+```
 
-## Contributing
+`php artisan db:seed --class=FactoryDemoSeeder` reloads only the sample factory.
 
-Thank you for considering contributing to our starter kit! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## Roadmap
 
-All contributions to the Starter Kits from now on should be made through [Maestro](https://github.com/laravel/maestro).
-
-## Code of Conduct
-
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## License
-
-The Laravel + React starter kit is open-sourced software licensed under the MIT license.
+1. Scaffold and UI shell (this phase): every screen renders from the database, seeded with sample data.
+2. Core data and actions: create and edit droids, tasks, milestones, subscriptions and the schedule.
+3. GitHub App: repos, Projects v2 sync, PRs, checks and reviews through webhooks.
+4. Droid runners: Claude Code and Codex on your subscriptions, following the schedule and fallback rules.
+5. Planner, Reflect and "Propose what's next".
+6. Laravel Cloud: deployments, health, metrics and logs from the Cloud API.
