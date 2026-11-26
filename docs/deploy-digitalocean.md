@@ -330,7 +330,7 @@ Your email address then needs verifying:
 
     ```bash
     cd /var/www/droids
-    sudo -u www-data php artisan tinker --execute="App\Models\User::first()->markEmailAsVerified();"
+    sudo -u deploy php artisan tinker --execute="App\Models\User::first()->markEmailAsVerified();"
     ```
 
 You land on the Hangar. It starts empty: no projects, droids or subscriptions.
@@ -377,7 +377,7 @@ The App is private, so only your account can install it.
 ### Checking that it works
 
 - **Webhooks:** on GitHub, open **Settings > Developer settings > GitHub Apps > your App > Advanced**. Recent deliveries should show `202` responses. A `401` means the signature didn't match; the most likely cause is a changed `APP_KEY` or a different App.
-- **Manual sync:** run `sudo -u www-data php artisan github:sync` on the server, or press **Sync** on a project's board.
+- **Manual sync:** run `sudo -u deploy php artisan github:sync` on the server, or press **Sync** on a project's board.
 - **Live test:** open an issue in a connected repo. It should appear in that project's Backlog within a few seconds.
 
 ### If something goes wrong
