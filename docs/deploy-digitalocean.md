@@ -264,9 +264,8 @@ Use this option if your domain's DNS is on Cloudflare and you want traffic to go
 5. In `/etc/nginx/sites-available/droids`, replace the two `listen 80` lines with:
 
     ```nginx
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    http2 on;
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
     ssl_certificate     /etc/ssl/cloudflare/droids.pem;
     ssl_certificate_key /etc/ssl/cloudflare/droids.key;
     ```
