@@ -91,6 +91,13 @@ import {
     type Subscription,
 } from '@/factory/data';
 import { NavUser } from '@/components/nav-user';
+import {
+    applyServerStore,
+    request,
+    SaveContext,
+    useSave,
+    type Save,
+} from '@/factory/api';
 import { DroidAvatar, ProviderMark } from '@/factory/droid-avatar';
 import { ChatSheet, type ChatTarget } from '@/factory/chat';
 import { TaskSheet, PrChip } from '@/factory/task-sheet';
@@ -244,12 +251,43 @@ export default function FactoryApp({
         store.projects.find((p) => p.id === id) ?? store.projects[0];
     const inProj = (p: string) => project === 'all' || p === project;
 
-    const assign = (n: number, id: string, as: 'builder' | 'reviewer') => {
-        const i = store.issues.find((x) => x.n === n)!;
-        const d = droid(id)!;
+    // Write to the server, then reconcile with the store it returns. On failure,
+    // show why and reload the server's state to undo the optimistic change.
+    const save: Save = async (method, url, body) => {
+        try {
+            const res = await request(method, url, body);
+            applyServerStore(store, res.store);
+            bump();
+            return res;
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'Could not save');
+            try {
+                applyServerStore(
+                    store,
+                    (await request('GET', '/factory/state')).store,
+                );
+                bump();
+            } catch {
+                /* offline: keep what we have */
+            }
+            return null;
+        }
+    };
+
+    const assign = (
+        pid: string,
+        n: number,
+        id: string,
+        as: 'builder' | 'reviewer',
+    ) => {
+        const i = store.issues.find((x) => x.project === pid && x.n === n);
+        const d = droid(id);
+        if (!i || !d) return;
         if (as === 'builder') {
-            if (d.task && d.task !== n) {
-                const old = store.issues.find((x) => x.n === d.task);
+            if (d.task && (d.task !== n || d.project !== pid)) {
+                const old = store.issues.find(
+                    (x) => x.project === d.project && x.n === d.task,
+                );
                 if (old && old.col === 'progress' && old.builder === d.id) {
                     old.builder = undefined;
                     old.col = 'ready';
@@ -261,9 +299,9 @@ export default function FactoryApp({
                 status: 'working',
                 task: n,
                 project: i.project,
-                progress: 0.04,
+                progress: 0,
                 minutes: 0,
-                step: `Cloning ${proj(i.project).repo} and reading #${n}`,
+                step: `Queued: clone ${proj(i.project).repo} and read #${n}`,
             });
         } else {
             i.reviewer = id;
@@ -272,25 +310,21 @@ export default function FactoryApp({
                     status: 'working',
                     task: n,
                     project: i.project,
-                    progress: 0.05,
+                    progress: 0,
                     minutes: 0,
                     step: `Waiting to review #${n}`,
                 });
         }
-        store.feed.unshift({
-            droid: id,
-            text: `${as === 'builder' ? 'Started' : 'Will review'} #${n} ${i.title}`,
-            min: 0,
-        });
-        (store.chats[id] ??= []).push({
-            kind: 'agent',
-            text:
-                as === 'builder'
-                    ? `On it. Created branch \`droid/${d.unit.toLowerCase()}/${n}\` and reading #${n}.`
-                    : `I'll review #${n} when the PR opens.`,
-        });
         bump();
-        toast.success(`${d.unit} ${d.name} assigned to #${n} as ${as}`);
+        void save(
+            'POST',
+            `/factory/projects/${encodeURIComponent(pid)}/tasks/${n}/assign`,
+            { droid: id, as },
+        ).then(
+            (res) =>
+                res &&
+                toast.success(`${d.unit} ${d.name} assigned to #${n} as ${as}`),
+        );
     };
 
     const needs = store.droids.filter(
@@ -311,407 +345,427 @@ export default function FactoryApp({
     };
 
     return (
-        <SidebarProvider>
-            <Head title={TITLES[view]} />
-            <Sidebar collapsible="icon">
-                <SidebarHeader>
-                    <SidebarMenu>
-                        <SidebarMenuItem>
-                            <SidebarMenuButton
-                                size="lg"
-                                onClick={() => {
-                                    setView('hangar');
-                                    setProject('all', 'hangar');
-                                }}
-                            >
-                                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                                    <BotIcon className="size-4" />
-                                </div>
-                                <div className="grid flex-1 text-left leading-tight">
-                                    <span className="truncate font-semibold">
-                                        Droids
-                                    </span>
-                                    <span className="truncate text-xs text-muted-foreground">
-                                        Software factory
-                                    </span>
-                                </div>
-                            </SidebarMenuButton>
-                        </SidebarMenuItem>
-                    </SidebarMenu>
-                </SidebarHeader>
-                <SidebarContent>
-                    <SidebarGroup>
-                        <SidebarGroupContent>
-                            <SidebarMenu>
-                                {(
-                                    [
-                                        ['hangar', 'Hangar', WarehouseIcon],
+        <SaveContext.Provider value={save}>
+            <SidebarProvider>
+                <Head title={TITLES[view]} />
+                <Sidebar collapsible="icon">
+                    <SidebarHeader>
+                        <SidebarMenu>
+                            <SidebarMenuItem>
+                                <SidebarMenuButton
+                                    size="lg"
+                                    onClick={() => {
+                                        setView('hangar');
+                                        setProject('all', 'hangar');
+                                    }}
+                                >
+                                    <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                                        <BotIcon className="size-4" />
+                                    </div>
+                                    <div className="grid flex-1 text-left leading-tight">
+                                        <span className="truncate font-semibold">
+                                            Droids
+                                        </span>
+                                        <span className="truncate text-xs text-muted-foreground">
+                                            Software factory
+                                        </span>
+                                    </div>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
+                        </SidebarMenu>
+                    </SidebarHeader>
+                    <SidebarContent>
+                        <SidebarGroup>
+                            <SidebarGroupContent>
+                                <SidebarMenu>
+                                    {(
                                         [
-                                            'projects',
-                                            'Projects',
-                                            FolderKanbanIcon,
-                                        ],
-                                        ['board', 'Board', Columns3Icon],
-                                        ['droids', 'Droids', BotIcon],
-                                        [
-                                            'subscriptions',
-                                            'Subscriptions',
-                                            GaugeIcon,
-                                        ],
-                                    ] as const
-                                ).map(([k, l, Icon]) => (
-                                    <SidebarMenuItem key={k}>
-                                        <SidebarMenuButton
-                                            isActive={view === k}
-                                            tooltip={l}
-                                            onClick={() => go(k)}
-                                        >
-                                            <Icon />
-                                            {l}
-                                        </SidebarMenuButton>
-                                        {k === 'hangar' && needs > 0 && (
-                                            <SidebarMenuBadge className="text-needs">
-                                                {needs}
-                                            </SidebarMenuBadge>
-                                        )}
-                                    </SidebarMenuItem>
-                                ))}
-                            </SidebarMenu>
-                        </SidebarGroupContent>
-                    </SidebarGroup>
-                    <SidebarGroup>
-                        <SidebarGroupLabel>Projects</SidebarGroupLabel>
-                        <SidebarGroupAction
-                            title="Connect a repository"
-                            onClick={() => setConnectOpen(true)}
-                        >
-                            <PlusIcon />
-                            <span className="sr-only">
-                                Connect a repository
-                            </span>
-                        </SidebarGroupAction>
-                        <SidebarGroupContent>
-                            <SidebarMenu className="gap-1">
-                                <SidebarMenuItem>
-                                    <SidebarMenuButton
-                                        isActive={project === 'all'}
-                                        tooltip="All projects"
-                                        onClick={() => setProject('all')}
-                                    >
-                                        <LayoutGridIcon />
-                                        All projects
-                                    </SidebarMenuButton>
-                                    <SidebarMenuBadge>
-                                        {
-                                            store.droids.filter(
-                                                (d) => d.status !== 'idle',
-                                            ).length
-                                        }
-                                    </SidebarMenuBadge>
-                                </SidebarMenuItem>
-                                {store.projects.map((p) => {
-                                    const pct = Math.round(
-                                        (p.done / p.total) * 100,
-                                    );
-                                    const active = store.droids.filter(
-                                        (d) =>
-                                            d.project === p.id &&
-                                            d.status !== 'idle',
-                                    );
-                                    return (
-                                        <SidebarMenuItem key={p.id}>
+                                            ['hangar', 'Hangar', WarehouseIcon],
+                                            [
+                                                'projects',
+                                                'Projects',
+                                                FolderKanbanIcon,
+                                            ],
+                                            ['board', 'Board', Columns3Icon],
+                                            ['droids', 'Droids', BotIcon],
+                                            [
+                                                'subscriptions',
+                                                'Subscriptions',
+                                                GaugeIcon,
+                                            ],
+                                        ] as const
+                                    ).map(([k, l, Icon]) => (
+                                        <SidebarMenuItem key={k}>
                                             <SidebarMenuButton
-                                                isActive={project === p.id}
-                                                tooltip={`${p.name} · ${pct}%`}
-                                                onClick={() => {
-                                                    const v =
-                                                        view === 'hangar' ||
-                                                        view === 'subscriptions'
-                                                            ? 'projects'
-                                                            : view;
-                                                    setView(v);
-                                                    setProject(p.id, v);
-                                                }}
-                                                className="h-auto flex-col items-stretch gap-1.5 py-2 group-data-[collapsible=icon]:!h-8 group-data-[collapsible=icon]:!p-2"
+                                                isActive={view === k}
+                                                tooltip={l}
+                                                onClick={() => go(k)}
                                             >
-                                                <div className="flex items-center gap-2">
-                                                    <span
-                                                        className="size-2.5 shrink-0 rounded-[3px]"
-                                                        style={{
-                                                            background: p.color,
-                                                        }}
-                                                    />
-                                                    <span className="truncate font-medium group-data-[collapsible=icon]:hidden">
-                                                        {p.name}
-                                                    </span>
-                                                    {(() => {
-                                                        const h = cloudHealth(
-                                                            store,
-                                                            p.id,
-                                                        );
-                                                        return (
-                                                            <span
-                                                                title={`Laravel Cloud: ${h.label}`}
-                                                                className={cn(
-                                                                    'size-1.5 rounded-full group-data-[collapsible=icon]:hidden',
-                                                                    h.dot,
-                                                                )}
-                                                            />
-                                                        );
-                                                    })()}
-                                                    <span className="ml-auto text-xs text-muted-foreground tabular-nums group-data-[collapsible=icon]:hidden">
-                                                        {pct}%
-                                                    </span>
-                                                </div>
-                                                <div className="flex flex-col gap-1.5 pl-[18px] group-data-[collapsible=icon]:hidden">
-                                                    <Progress
-                                                        value={pct}
-                                                        className="h-1"
-                                                    />
-                                                    <div className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
-                                                        <span className="truncate">
-                                                            {p.milestone} ·{' '}
-                                                            {p.done}/{p.total}
+                                                <Icon />
+                                                {l}
+                                            </SidebarMenuButton>
+                                            {k === 'hangar' && needs > 0 && (
+                                                <SidebarMenuBadge className="text-needs">
+                                                    {needs}
+                                                </SidebarMenuBadge>
+                                            )}
+                                        </SidebarMenuItem>
+                                    ))}
+                                </SidebarMenu>
+                            </SidebarGroupContent>
+                        </SidebarGroup>
+                        <SidebarGroup>
+                            <SidebarGroupLabel>Projects</SidebarGroupLabel>
+                            <SidebarGroupAction
+                                title="Connect a repository"
+                                onClick={() => setConnectOpen(true)}
+                            >
+                                <PlusIcon />
+                                <span className="sr-only">
+                                    Connect a repository
+                                </span>
+                            </SidebarGroupAction>
+                            <SidebarGroupContent>
+                                <SidebarMenu className="gap-1">
+                                    <SidebarMenuItem>
+                                        <SidebarMenuButton
+                                            isActive={project === 'all'}
+                                            tooltip="All projects"
+                                            onClick={() => setProject('all')}
+                                        >
+                                            <LayoutGridIcon />
+                                            All projects
+                                        </SidebarMenuButton>
+                                        <SidebarMenuBadge>
+                                            {
+                                                store.droids.filter(
+                                                    (d) => d.status !== 'idle',
+                                                ).length
+                                            }
+                                        </SidebarMenuBadge>
+                                    </SidebarMenuItem>
+                                    {store.projects.map((p) => {
+                                        const pct = Math.round(
+                                            (p.done / p.total) * 100,
+                                        );
+                                        const active = store.droids.filter(
+                                            (d) =>
+                                                d.project === p.id &&
+                                                d.status !== 'idle',
+                                        );
+                                        return (
+                                            <SidebarMenuItem key={p.id}>
+                                                <SidebarMenuButton
+                                                    isActive={project === p.id}
+                                                    tooltip={`${p.name} · ${pct}%`}
+                                                    onClick={() => {
+                                                        const v =
+                                                            view === 'hangar' ||
+                                                            view ===
+                                                                'subscriptions'
+                                                                ? 'projects'
+                                                                : view;
+                                                        setView(v);
+                                                        setProject(p.id, v);
+                                                    }}
+                                                    className="h-auto flex-col items-stretch gap-1.5 py-2 group-data-[collapsible=icon]:!h-8 group-data-[collapsible=icon]:!p-2"
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <span
+                                                            className="size-2.5 shrink-0 rounded-[3px]"
+                                                            style={{
+                                                                background:
+                                                                    p.color,
+                                                            }}
+                                                        />
+                                                        <span className="truncate font-medium group-data-[collapsible=icon]:hidden">
+                                                            {p.name}
                                                         </span>
-                                                        <span className="ml-auto flex -space-x-1.5">
-                                                            {active
-                                                                .slice(0, 3)
-                                                                .map((d) => (
-                                                                    <DroidAvatar
-                                                                        key={
-                                                                            d.id
-                                                                        }
-                                                                        provider={
-                                                                            d.provider
-                                                                        }
-                                                                        status={
-                                                                            d.status
-                                                                        }
-                                                                        seed={
-                                                                            d.seed
-                                                                        }
-                                                                        className="size-4 rounded"
-                                                                    />
-                                                                ))}
+                                                        {(() => {
+                                                            const h =
+                                                                cloudHealth(
+                                                                    store,
+                                                                    p.id,
+                                                                );
+                                                            return (
+                                                                <span
+                                                                    title={`Laravel Cloud: ${h.label}`}
+                                                                    className={cn(
+                                                                        'size-1.5 rounded-full group-data-[collapsible=icon]:hidden',
+                                                                        h.dot,
+                                                                    )}
+                                                                />
+                                                            );
+                                                        })()}
+                                                        <span className="ml-auto text-xs text-muted-foreground tabular-nums group-data-[collapsible=icon]:hidden">
+                                                            {pct}%
                                                         </span>
                                                     </div>
-                                                </div>
-                                            </SidebarMenuButton>
-                                        </SidebarMenuItem>
-                                    );
-                                })}
-                            </SidebarMenu>
-                        </SidebarGroupContent>
-                    </SidebarGroup>
-                </SidebarContent>
-                <SidebarFooter>
-                    <button
-                        onClick={() => go('subscriptions')}
-                        className="grid gap-2.5 rounded-lg border bg-background p-3 text-left text-xs group-data-[collapsible=icon]:hidden hover:bg-accent"
-                    >
-                        {(['claude', 'codex'] as Provider[]).map((pv) => {
-                            const sub = activeSub(store, pv);
-                            const w = sub?.windows[0];
-                            const used = w
-                                ? w.used
-                                : sub?.spend
-                                  ? sub.spend.used / sub.spend.cap
-                                  : 0;
-                            return (
-                                <div key={pv} className="grid gap-1">
-                                    <div className="flex items-center gap-1.5">
-                                        <EngineLogo
-                                            provider={pv}
-                                            className="size-3.5"
-                                        />
-                                        <span className="truncate font-medium">
-                                            {sub ? sub.name : 'Paused'}
-                                        </span>
-                                        <span className="ml-auto text-muted-foreground tabular-nums">
-                                            {Math.round(used * 100)}%
-                                        </span>
-                                    </div>
-                                    <div className="h-1 overflow-hidden rounded-full bg-muted">
-                                        <div
-                                            className={cn(
-                                                'h-full rounded-full',
-                                                used >= 0.85
-                                                    ? 'bg-blocked'
-                                                    : used >= 0.6
-                                                      ? 'bg-needs'
-                                                      : 'bg-done',
-                                            )}
-                                            style={{ width: `${used * 100}%` }}
-                                        />
-                                    </div>
-                                    <div className="text-[11px] text-muted-foreground">
-                                        {w
-                                            ? `${w.label} · ${w.resets}`
-                                            : sub?.spend
-                                              ? 'Monthly spend cap'
-                                              : 'No subscription scheduled now'}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </button>
-                    <NavUser />
-                </SidebarFooter>
-                <SidebarRail />
-            </Sidebar>
-
-            <SidebarInset className="min-w-0">
-                <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background/90 px-4 backdrop-blur">
-                    <SidebarTrigger className="-ml-1" />
-                    <Separator orientation="vertical" className="mr-1 !h-4" />
-                    <div className="flex min-w-0 items-center gap-2 text-sm">
-                        <span className="text-muted-foreground max-sm:hidden">
-                            {TITLES[view]}
-                        </span>
-                        <span className="text-muted-foreground max-sm:hidden">
-                            /
-                        </span>
-                        <span className="truncate font-medium">
-                            {project === 'all'
-                                ? 'All projects'
-                                : proj(project).name}
-                        </span>
-                    </div>
-                    <div className="ml-auto flex items-center gap-2">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setConnectOpen(true)}
-                            className="max-sm:hidden"
+                                                    <div className="flex flex-col gap-1.5 pl-[18px] group-data-[collapsible=icon]:hidden">
+                                                        <Progress
+                                                            value={pct}
+                                                            className="h-1"
+                                                        />
+                                                        <div className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+                                                            <span className="truncate">
+                                                                {p.milestone} ·{' '}
+                                                                {p.done}/
+                                                                {p.total}
+                                                            </span>
+                                                            <span className="ml-auto flex -space-x-1.5">
+                                                                {active
+                                                                    .slice(0, 3)
+                                                                    .map(
+                                                                        (d) => (
+                                                                            <DroidAvatar
+                                                                                key={
+                                                                                    d.id
+                                                                                }
+                                                                                provider={
+                                                                                    d.provider
+                                                                                }
+                                                                                status={
+                                                                                    d.status
+                                                                                }
+                                                                                seed={
+                                                                                    d.seed
+                                                                                }
+                                                                                className="size-4 rounded"
+                                                                            />
+                                                                        ),
+                                                                    )}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </SidebarMenuButton>
+                                            </SidebarMenuItem>
+                                        );
+                                    })}
+                                </SidebarMenu>
+                            </SidebarGroupContent>
+                        </SidebarGroup>
+                    </SidebarContent>
+                    <SidebarFooter>
+                        <button
+                            onClick={() => go('subscriptions')}
+                            className="grid gap-2.5 rounded-lg border bg-background p-3 text-left text-xs group-data-[collapsible=icon]:hidden hover:bg-accent"
                         >
-                            <GithubMark />
-                            Connect repo
-                        </Button>
-                        <Button size="sm" onClick={() => setAssembleOpen(true)}>
-                            <PlusIcon />
-                            Assemble droid
-                        </Button>
-                    </div>
-                </header>
+                            {(['claude', 'codex'] as Provider[]).map((pv) => {
+                                const sub = activeSub(store, pv);
+                                const w = sub?.windows[0];
+                                const used = w
+                                    ? w.used
+                                    : sub?.spend
+                                      ? sub.spend.used / sub.spend.cap
+                                      : 0;
+                                return (
+                                    <div key={pv} className="grid gap-1">
+                                        <div className="flex items-center gap-1.5">
+                                            <EngineLogo
+                                                provider={pv}
+                                                className="size-3.5"
+                                            />
+                                            <span className="truncate font-medium">
+                                                {sub ? sub.name : 'Paused'}
+                                            </span>
+                                            <span className="ml-auto text-muted-foreground tabular-nums">
+                                                {Math.round(used * 100)}%
+                                            </span>
+                                        </div>
+                                        <div className="h-1 overflow-hidden rounded-full bg-muted">
+                                            <div
+                                                className={cn(
+                                                    'h-full rounded-full',
+                                                    used >= 0.85
+                                                        ? 'bg-blocked'
+                                                        : used >= 0.6
+                                                          ? 'bg-needs'
+                                                          : 'bg-done',
+                                                )}
+                                                style={{
+                                                    width: `${used * 100}%`,
+                                                }}
+                                            />
+                                        </div>
+                                        <div className="text-[11px] text-muted-foreground">
+                                            {w
+                                                ? `${w.label} · ${w.resets}`
+                                                : sub?.spend
+                                                  ? 'Monthly spend cap'
+                                                  : 'No subscription scheduled now'}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </button>
+                        <NavUser />
+                    </SidebarFooter>
+                    <SidebarRail />
+                </Sidebar>
 
-                <main className="min-w-0 flex-1">
-                    {view === 'hangar' && (
-                        <Hangar
-                            {...ctx}
-                            filter={filter}
-                            setFilter={setFilter}
+                <SidebarInset className="min-w-0">
+                    <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background/90 px-4 backdrop-blur">
+                        <SidebarTrigger className="-ml-1" />
+                        <Separator
+                            orientation="vertical"
+                            className="mr-1 !h-4"
                         />
-                    )}
-                    {view === 'projects' && (
-                        <ProjectView
-                            store={store}
-                            bump={bump}
-                            project={project}
-                            proj={proj}
-                            setProject={setProject}
-                            openTask={setTaskKey}
-                            planWith={planWith}
-                            propose={propose}
-                        />
-                    )}
-                    {view === 'board' && <Board {...ctx} />}
-                    {view === 'droids' && (
-                        <Roster
-                            {...ctx}
-                            filter={filter}
-                            setFilter={setFilter}
-                        />
-                    )}
-                    {view === 'subscriptions' && (
-                        <SubscriptionsView
-                            store={store}
-                            bump={bump}
-                            onAdd={() => setAddSubOpen(true)}
-                        />
-                    )}
-                    <p className="px-4 pb-8 text-xs text-muted-foreground md:px-6">
-                        Showing sample data until GitHub, the droid runners and
-                        Laravel Cloud are connected. Changes made here are not
-                        saved yet.
-                    </p>
-                </main>
-            </SidebarInset>
+                        <div className="flex min-w-0 items-center gap-2 text-sm">
+                            <span className="text-muted-foreground max-sm:hidden">
+                                {TITLES[view]}
+                            </span>
+                            <span className="text-muted-foreground max-sm:hidden">
+                                /
+                            </span>
+                            <span className="truncate font-medium">
+                                {project === 'all'
+                                    ? 'All projects'
+                                    : proj(project).name}
+                            </span>
+                        </div>
+                        <div className="ml-auto flex items-center gap-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setConnectOpen(true)}
+                                className="max-sm:hidden"
+                            >
+                                <GithubMark />
+                                Connect repo
+                            </Button>
+                            <Button
+                                size="sm"
+                                onClick={() => setAssembleOpen(true)}
+                            >
+                                <PlusIcon />
+                                Assemble droid
+                            </Button>
+                        </div>
+                    </header>
 
-            <ChatSheet
-                store={store}
-                target={chat}
-                onClose={() => setChat(null)}
-                bump={bump}
-                proj={proj}
-            />
-            <TaskSheet
-                store={store}
-                issueKey={taskKey}
-                onClose={() => setTaskKey(null)}
-                openChat={openChat}
-                bump={bump}
-                proj={proj}
-            />
-            <AddSubscriptionDialog
-                open={addSubOpen}
-                onOpenChange={setAddSubOpen}
-                onAdd={(s) => {
-                    store.subs.push(s);
-                    bump();
-                    toast.success(`${s.name} added`, {
-                        description:
-                            'Paint it into the schedule to start using it',
-                    });
-                }}
-            />
-            <AssembleDialog
-                open={assembleOpen}
-                onOpenChange={setAssembleOpen}
-                projects={store.projects}
-                defaultProject={
-                    project === 'all' ? store.projects[0].id : project
-                }
-                onCreate={(d) => {
-                    store.droids.push(d);
-                    store.feed.unshift({
-                        droid: d.id,
-                        text: 'rolled off the assembly line',
-                        min: 0,
-                    });
-                    bump();
-                    toast.success(
-                        `${d.unit} ${d.name} assembled on ${proj(d.project).name}`,
-                    );
-                }}
-                nextSeed={store.droids.length + 1}
-                count={(pv) =>
-                    store.droids.filter((d) => d.provider === pv).length
-                }
-            />
-            <ConnectDialog
-                open={connectOpen}
-                onOpenChange={setConnectOpen}
-                onConnect={(repo, board) => {
-                    const id = `p${store.projects.length + 1}`;
-                    store.projects.push({
-                        id,
-                        name: repo.split('/').pop() || repo,
-                        repo,
-                        board,
-                        color: 'oklch(0.6 0.1 220)',
-                        milestone: 'First milestone',
-                        due: 'Jan 30',
-                        done: 0,
-                        total: 2,
-                    });
-                    store.roadmap[id] = [];
-                    setView('board');
-                    setProject(id, 'board');
-                    bump();
-                    toast.success(`Connected ${repo} with ${board}`);
-                }}
-            />
-        </SidebarProvider>
+                    <main className="min-w-0 flex-1">
+                        {view === 'hangar' && (
+                            <Hangar
+                                {...ctx}
+                                filter={filter}
+                                setFilter={setFilter}
+                            />
+                        )}
+                        {view === 'projects' && (
+                            <ProjectView
+                                store={store}
+                                bump={bump}
+                                project={project}
+                                proj={proj}
+                                setProject={setProject}
+                                openTask={setTaskKey}
+                                planWith={planWith}
+                                propose={propose}
+                            />
+                        )}
+                        {view === 'board' && <Board {...ctx} />}
+                        {view === 'droids' && (
+                            <Roster
+                                {...ctx}
+                                filter={filter}
+                                setFilter={setFilter}
+                            />
+                        )}
+                        {view === 'subscriptions' && (
+                            <SubscriptionsView
+                                store={store}
+                                bump={bump}
+                                onAdd={() => setAddSubOpen(true)}
+                            />
+                        )}
+                        <p className="px-4 pb-8 text-xs text-muted-foreground md:px-6">
+                            Showing sample data until GitHub, the droid runners
+                            and Laravel Cloud are connected. Changes made here
+                            are not saved yet.
+                        </p>
+                    </main>
+                </SidebarInset>
+
+                <ChatSheet
+                    store={store}
+                    target={chat}
+                    onClose={() => setChat(null)}
+                    bump={bump}
+                    proj={proj}
+                />
+                <TaskSheet
+                    store={store}
+                    issueKey={taskKey}
+                    onClose={() => setTaskKey(null)}
+                    openChat={openChat}
+                    bump={bump}
+                    proj={proj}
+                />
+                <AddSubscriptionDialog
+                    open={addSubOpen}
+                    onOpenChange={setAddSubOpen}
+                    onAdd={async (s) => {
+                        const res = await save(
+                            'POST',
+                            '/factory/subscriptions',
+                            s,
+                        );
+                        if (res)
+                            toast.success(`${s.plan} added`, {
+                                description:
+                                    'Paint it into the schedule to start using it',
+                            });
+                        return !!res;
+                    }}
+                />
+                <AssembleDialog
+                    open={assembleOpen}
+                    onOpenChange={setAssembleOpen}
+                    projects={store.projects}
+                    defaultProject={
+                        project === 'all' ? store.projects[0].id : project
+                    }
+                    onCreate={async (d) => {
+                        const res = await save('POST', '/factory/droids', d);
+                        const made = res && droid(res.droid as string);
+                        if (made)
+                            toast.success(
+                                `${made.unit} ${made.name} assembled on ${proj(made.project).name}`,
+                            );
+                        return !!res;
+                    }}
+                    nextSeed={store.droids.length + 1}
+                    nextUnit={(pv) => {
+                        const prefix = pv === 'claude' ? 'CL' : 'CX';
+                        const top = Math.max(
+                            0,
+                            ...store.droids
+                                .filter((d) => d.unit.startsWith(`${prefix}-`))
+                                .map((d) => Number(d.unit.slice(3)) || 0),
+                        );
+                        return `${prefix}-${String(top + 1).padStart(2, '0')}`;
+                    }}
+                />
+                <ConnectDialog
+                    open={connectOpen}
+                    onOpenChange={setConnectOpen}
+                    onConnect={async (repo, board) => {
+                        const res = await save('POST', '/factory/projects', {
+                            repo,
+                            board,
+                        });
+                        if (!res) return false;
+                        setView('board');
+                        setProject(res.project as string, 'board');
+                        toast.success(`Connected ${repo} with ${board}`, {
+                            description:
+                                'Board sync arrives with the GitHub App',
+                        });
+                        return true;
+                    }}
+                />
+            </SidebarProvider>
+        </SaveContext.Provider>
     );
 }
 
@@ -722,7 +776,12 @@ type Ctx = {
     proj: (id: string) => Project;
     inProj: (p: string) => boolean;
     project: string;
-    assign: (n: number, id: string, as: 'builder' | 'reviewer') => void;
+    assign: (
+        pid: string,
+        n: number,
+        id: string,
+        as: 'builder' | 'reviewer',
+    ) => void;
     openChat: (id: string) => void;
     openTask: (key: string) => void;
     planWith: (pid: string) => void;
@@ -1102,6 +1161,7 @@ function IssuePicker({
                                                 value={`${i.n} ${i.title} ${p.name}`}
                                                 onSelect={() => {
                                                     assign(
+                                                        i.project,
                                                         i.n,
                                                         d.id,
                                                         d.role === 'Reviewer'
@@ -1177,7 +1237,12 @@ function DroidPicker({
                                             key={d.id}
                                             value={`${d.unit} ${d.name} ${d.role} ${PROVIDERS[pv].label}`}
                                             onSelect={() => {
-                                                assign(issue.n, d.id, as);
+                                                assign(
+                                                    issue.project,
+                                                    issue.n,
+                                                    d.id,
+                                                    as,
+                                                );
                                                 setOpen(false);
                                             }}
                                         >
@@ -1224,6 +1289,7 @@ function Board({
     openTask,
     planWith,
 }: Ctx) {
+    const save = useSave();
     const [drag, setDrag] = useState<string | null>(null);
     const [over, setOver] = useState<ColKey | null>(null);
     const list = store.issues.filter((i) => inProj(i.project));
@@ -1241,9 +1307,16 @@ function Board({
             if (col === 'done' && i.col !== 'done') pr.done++;
             if (i.col === 'done' && col !== 'done') pr.done--;
             i.col = col;
-            toast(
-                `#${i.n} moved to ${COLS.find((c) => c.key === col)!.label}`,
-                { description: `Status updated on GitHub Project ${pr.board}` },
+            void save(
+                'PATCH',
+                `/factory/projects/${encodeURIComponent(i.project)}/tasks/${i.n}`,
+                { column: col },
+            ).then(
+                (res) =>
+                    res &&
+                    toast(
+                        `#${i.n} moved to ${COLS.find((c) => c.key === col)!.label}`,
+                    ),
             );
         }
         setDrag(null);

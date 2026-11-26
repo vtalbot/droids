@@ -86,6 +86,7 @@ import { PLAN_DRAFTS, PROPOSALS, RETRO, SUGGEST } from '@/factory/demo';
 import { DroidAvatar } from '@/factory/droid-avatar';
 import { EngineLogo } from '@/factory/logos';
 import { cn } from '@/lib/utils';
+import { useSave } from '@/factory/api';
 import type { Store } from '@/factory/app';
 
 export type ChatTarget = {
@@ -178,6 +179,7 @@ export function ChatSheet({
     const [text, setText] = useState('');
     const [model, setModel] = useState(d?.model ?? '');
     const [usedSugg, setUsedSugg] = useState<Record<string, boolean>>({});
+    const save = useSave();
     useEffect(() => {
         if (d) setModel(d.model);
         setStatus('ready');
@@ -239,7 +241,12 @@ export function ChatSheet({
         items.push({ kind: 'user', text: t });
         if (SUGGEST[d.id]?.includes(t))
             setUsedSugg((u) => ({ ...u, [d.id]: true }));
-        if (model && model !== d.model) d.model = model;
+        if (model && model !== d.model) {
+            d.model = model;
+            void save('PATCH', `/factory/droids/${encodeURIComponent(d.id)}`, {
+                model,
+            });
+        }
         setText('');
         setStatus('submitted');
         bump();
@@ -556,7 +563,6 @@ function Retro({
     m,
     d,
     bump,
-    store,
 }: {
     m: Extract<ChatItem, { kind: 'retro' }>;
     d: Droid;
@@ -564,6 +570,7 @@ function Retro({
     store: Store;
 }) {
     const r = RETRO[m.provider];
+    const save = useSave();
     return (
         <Card className="gap-4 py-4 shadow-none">
             <CardHeader className="px-4">
@@ -626,13 +633,14 @@ function Retro({
                     <>
                         <Button
                             size="sm"
-                            onClick={() => {
+                            onClick={async () => {
+                                const res = await save(
+                                    'PATCH',
+                                    `/factory/droids/${encodeURIComponent(d.id)}`,
+                                    { add_rules: r.rules },
+                                );
+                                if (!res) return;
                                 m.applied = true;
-                                store.feed.unshift({
-                                    droid: d.id,
-                                    text: 'Updated its instructions after a retrospective',
-                                    min: 0,
-                                });
                                 toast.success(
                                     `${d.unit} instructions updated`,
                                     {
@@ -680,40 +688,33 @@ function Drafts({
     const [on, setOn] = useState<boolean[]>(() => list.map(() => true));
     const p = proj(m.project);
     const count = on.filter(Boolean).length;
-    const create = () => {
-        let n =
-            Math.max(
-                ...store.issues
-                    .filter((i) => i.project === m.project)
-                    .map((i) => i.n),
-            ) + 1;
-        const made: number[] = [];
-        list.forEach((t, i) => {
-            if (on[i]) {
-                store.issues.push({
-                    n,
-                    project: m.project,
-                    title: t.title,
-                    col: 'backlog',
-                    labels: t.labels,
-                    engine: t.engine,
-                });
-                made.push(n++);
-            }
-        });
-        p.total += made.length;
+    const save = useSave();
+    const [busy, setBusy] = useState(false);
+    const create = async () => {
+        setBusy(true);
+        const res = await save(
+            'POST',
+            `/factory/projects/${encodeURIComponent(m.project)}/tasks`,
+            {
+                tasks: list
+                    .filter((_, i) => on[i])
+                    .map((t) => ({
+                        title: t.title,
+                        labels: t.labels,
+                        engine: t.engine,
+                    })),
+            },
+        );
+        setBusy(false);
+        if (!res) return;
+        const made = res.numbers as number[];
         m.created = made;
-        store.chats[`plan:${m.project}`].push({
+        store.chats[`plan:${m.project}`]?.push({
             kind: 'agent',
             text: `Created ${made.map((x) => `#${x}`).join(', ')} in the **Backlog** of ${p.board}. Move them to Ready when you want droids to pick them up.`,
         });
-        store.feed.unshift({
-            droid: d.id,
-            text: `Drafted ${made.length} issues for ${p.name}`,
-            min: 0,
-        });
-        toast.success(`${made.length} issues created on GitHub`, {
-            description: `${p.board} · Backlog`,
+        toast.success(`${made.length} issues added to the Backlog`, {
+            description: `${p.name} · ${d.unit} drafted them`,
         });
         bump();
     };
@@ -779,7 +780,11 @@ function Drafts({
                         Created {m.created.map((x) => `#${x}`).join(', ')}
                     </span>
                 ) : (
-                    <Button size="sm" disabled={!count} onClick={create}>
+                    <Button
+                        size="sm"
+                        disabled={!count || busy}
+                        onClick={create}
+                    >
                         Create {count} issue{count === 1 ? '' : 's'} on GitHub
                     </Button>
                 )}
@@ -801,26 +806,29 @@ function Proposals({
 }) {
     const list = PROPOSALS[m.project] ?? [];
     const p = proj(m.project);
-    const add = (t: string) => {
+    const save = useSave();
+    const add = async (t: string) => {
         const pr = list.find((x) => x.title === t)!;
-        const ms = store.roadmap[m.project];
-        if (pr.kind === 'milestone')
-            ms.push({
-                id: `m${Date.now() % 10000}`,
-                name: pr.title,
-                due: 'TBD',
-                state: 'planned',
-                goal: pr.why,
-                features: [],
-            });
-        else
-            (
-                ms.find((x) => x.state === 'active') ?? ms[ms.length - 1]
-            ).features.push({
-                id: `f${Date.now() % 10000}`,
-                name: pr.title,
-                tasks: [],
-            });
+        const ms = store.roadmap[m.project] ?? [];
+        const target =
+            ms.find((x) => x.state === 'active') ?? ms[ms.length - 1];
+        if (pr.kind === 'feature' && !target) {
+            toast.error('Add a milestone first, then add features to it');
+            return;
+        }
+        const res =
+            pr.kind === 'milestone'
+                ? await save(
+                      'POST',
+                      `/factory/projects/${encodeURIComponent(m.project)}/milestones`,
+                      { name: pr.title, goal: pr.why },
+                  )
+                : await save(
+                      'POST',
+                      `/factory/milestones/${target.id.slice(1)}/features`,
+                      { name: pr.title },
+                  );
+        if (!res) return;
         (m.added ??= []).push(t);
         bump();
         toast.success(
