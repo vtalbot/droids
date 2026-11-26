@@ -232,7 +232,11 @@ rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
 ```
 
-## 7. HTTPS with Let's Encrypt
+## 7. HTTPS
+
+Pick one of the two options below.
+
+### Option A: Let's Encrypt
 
 ```bash
 apt install -y certbot python3-certbot-nginx
@@ -240,6 +244,63 @@ certbot --nginx -d droids.example.com --redirect -m you@example.com --agree-tos 
 ```
 
 Certbot adds the TLS settings to the server block and renews the certificate automatically.
+
+### Option B: Cloudflare proxy
+
+Use this option if your domain's DNS is on Cloudflare and you want traffic to go through its proxy.
+
+1. In Cloudflare **DNS**, set the `droids` A record to **Proxied** (orange cloud).
+2. In **SSL/TLS > Overview**, choose **Full (strict)**. Don't use Flexible: the link between Cloudflare and the droplet would then be plain HTTP, which breaks the secure session cookie.
+3. In **SSL/TLS > Edge Certificates**, turn on **Always Use HTTPS**.
+4. In **SSL/TLS > Origin Server**, click **Create Certificate**, keep the defaults (RSA, 15 years, your hostname) and create it. Save both parts on the droplet:
+
+   ```bash
+   mkdir -p /etc/ssl/cloudflare
+   nano /etc/ssl/cloudflare/droids.pem   # paste the Origin Certificate
+   nano /etc/ssl/cloudflare/droids.key   # paste the Private Key
+   chmod 600 /etc/ssl/cloudflare/droids.key
+   ```
+
+5. In `/etc/nginx/sites-available/droids`, replace the two `listen 80` lines with:
+
+   ```nginx
+   listen 443 ssl;
+   listen [::]:443 ssl;
+   http2 on;
+   ssl_certificate     /etc/ssl/cloudflare/droids.pem;
+   ssl_certificate_key /etc/ssl/cloudflare/droids.key;
+   ```
+
+6. Have Nginx log and pass on each visitor's real IP instead of Cloudflare's. Without this, every visitor shares Cloudflare's addresses, and Laravel's login rate limit would apply to all of them together. This script writes the current list of Cloudflare ranges:
+
+   ```bash
+   cat > /usr/local/bin/cloudflare-realip <<'SH'
+   #!/usr/bin/env bash
+   set -euo pipefail
+   {
+     for ip in $(curl -fsS https://www.cloudflare.com/ips-v4) $(curl -fsS https://www.cloudflare.com/ips-v6); do
+       echo "set_real_ip_from $ip;"
+     done
+     echo "real_ip_header CF-Connecting-IP;"
+   } > /etc/nginx/conf.d/cloudflare-realip.conf
+   nginx -t && systemctl reload nginx
+   SH
+   chmod +x /usr/local/bin/cloudflare-realip
+   cloudflare-realip
+   ```
+
+   Cloudflare rarely changes these ranges, but a monthly cron entry for root (`0 4 1 * * /usr/local/bin/cloudflare-realip`) keeps them current.
+
+7. Optionally, close port 80 and let only Cloudflare reach port 443:
+
+   ```bash
+   ufw delete allow 'Nginx Full'
+   for ip in $(curl -fsS https://www.cloudflare.com/ips-v4) $(curl -fsS https://www.cloudflare.com/ips-v6); do
+     ufw allow proto tcp from "$ip" to any port 443
+   done
+   ```
+
+With Option B, GitHub webhooks reach Droids through Cloudflare, and the signature still checks out because Cloudflare doesn't change the request body. If you turn on **Bot Fight Mode** or add WAF rules, add a skip rule for the path `/github/webhook`, or GitHub's deliveries will be challenged and fail.
 
 ## 8. Scheduler
 
