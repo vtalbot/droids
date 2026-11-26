@@ -163,6 +163,24 @@ class GitHubTest extends TestCase
         $this->get('/settings/github/created?code=x&state=nope')->assertForbidden();
     }
 
+    public function test_manifest_callback_explains_a_rejected_code(): void
+    {
+        $this->get('/settings/github/create');
+        $state = session('github_manifest_state');
+        Http::fake(['api.github.com/app-manifests/used/conversions' => Http::response(['message' => 'Not Found'], 404)]);
+
+        $this->get("/settings/github/created?code=used&state={$state}")->assertRedirect('/settings/github');
+
+        $this->assertNull(GithubApp::current());
+    }
+
+    public function test_install_callback_without_an_app_redirects_instead_of_failing(): void
+    {
+        $this->get('/settings/github/installed?installation_id=42')->assertRedirect('/settings/github');
+
+        $this->assertSame(0, GithubInstallation::count());
+    }
+
     public function test_install_callback_records_the_installation(): void
     {
         $this->app();
