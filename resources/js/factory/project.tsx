@@ -68,6 +68,7 @@ import { DroidAvatar } from '@/factory/droid-avatar';
 import { PrChip } from '@/factory/task-sheet';
 import { CloudPanel, cloudHealth } from '@/factory/cloud';
 import { cn } from '@/lib/utils';
+import { useSave } from '@/factory/api';
 import type { Store } from '@/factory/app';
 
 type P = Store['projects'][number];
@@ -445,35 +446,32 @@ function Overview({ store, p }: Props & { p: P }) {
     );
 }
 
-function Roadmap({ store, bump, p, openTask, propose }: Props & { p: P }) {
+function Roadmap({ store, p, openTask, propose }: Props & { p: P }) {
     const ms = store.roadmap[p.id] ?? [];
     const [addOpen, setAddOpen] = useState(false);
     const active = ms.find((m) => m.state === 'active')?.id;
-    const addTask = (fid: string, mid: string, title: string) => {
+    const save = useSave();
+    const addTask = async (fid: string, mid: string, title: string) => {
         const f = ms
             .find((m) => m.id === mid)!
             .features.find((x) => x.id === fid)!;
-        const n =
-            Math.max(
-                ...store.issues
-                    .filter((i) => i.project === p.id)
-                    .map((i) => i.n),
-                ...ms.flatMap((m) =>
-                    m.features.flatMap((x) => x.tasks.map((t) => t.n)),
-                ),
-            ) + 1;
-        store.issues.push({
-            n,
-            project: p.id,
-            title,
-            col: 'backlog',
-            labels: [f.name.toLowerCase().split(' ')[0]],
-        });
-        f.tasks.push({ n, title });
-        p.total++;
-        bump();
-        toast.success(`#${n} created in ${p.board}`, {
-            description: `${f.name} · Backlog`,
+        const res = await save(
+            'POST',
+            `/factory/projects/${encodeURIComponent(p.id)}/tasks`,
+            {
+                tasks: [
+                    {
+                        title,
+                        labels: [f.name.toLowerCase().split(' ')[0]],
+                        feature: Number(fid.slice(1)),
+                    },
+                ],
+            },
+        );
+        if (!res) return;
+        const [n] = res.numbers as number[];
+        toast.success(`#${n} added to the Backlog`, {
+            description: `${p.name} · ${f.name}`,
         });
     };
     return (
@@ -767,16 +765,16 @@ function Roadmap({ store, bump, p, openTask, propose }: Props & { p: P }) {
                                 {m.state !== 'done' && (
                                     <AddInline
                                         placeholder="Add a feature to this milestone…"
-                                        onAdd={(v) => {
-                                            m.features.push({
-                                                id: `f${Date.now() % 100000}`,
-                                                name: v,
-                                                tasks: [],
-                                            });
-                                            bump();
-                                            toast.success(
-                                                `Feature added to ${m.name}`,
+                                        onAdd={async (v) => {
+                                            const res = await save(
+                                                'POST',
+                                                `/factory/milestones/${m.id.slice(1)}/features`,
+                                                { name: v },
                                             );
+                                            if (res)
+                                                toast.success(
+                                                    `Feature added to ${m.name}`,
+                                                );
                                         }}
                                         bordered
                                     />
@@ -789,10 +787,14 @@ function Roadmap({ store, bump, p, openTask, propose }: Props & { p: P }) {
             <AddMilestone
                 open={addOpen}
                 onOpenChange={setAddOpen}
-                onAdd={(m) => {
-                    ms.push(m);
-                    bump();
-                    toast.success(`Milestone ${m.name} added`);
+                onAdd={async (m) => {
+                    const res = await save(
+                        'POST',
+                        `/factory/projects/${encodeURIComponent(p.id)}/milestones`,
+                        m,
+                    );
+                    if (res) toast.success(`Milestone ${m.name} added`);
+                    return !!res;
                 }}
             />
         </div>
@@ -850,7 +852,11 @@ function AddMilestone({
 }: {
     open: boolean;
     onOpenChange: (o: boolean) => void;
-    onAdd: (m: Milestone) => void;
+    onAdd: (m: {
+        name: string;
+        due_on: string | null;
+        goal: string;
+    }) => Promise<boolean>;
 }) {
     const [name, setName] = useState('');
     const [due, setDue] = useState('');
@@ -860,16 +866,14 @@ function AddMilestone({
             <DialogContent className="sm:max-w-[460px]">
                 <form
                     className="grid gap-4"
-                    onSubmit={(e) => {
+                    onSubmit={async (e) => {
                         e.preventDefault();
-                        onAdd({
-                            id: `m${Date.now() % 100000}`,
-                            name: name || 'New milestone',
-                            due: due || 'TBD',
-                            state: 'planned',
+                        const ok = await onAdd({
+                            name: name.trim() || 'New milestone',
+                            due_on: due || null,
                             goal,
-                            features: [],
                         });
+                        if (!ok) return;
                         setName('');
                         setDue('');
                         setGoal('');
@@ -896,6 +900,7 @@ function AddMilestone({
                         <Label htmlFor="ms-due">Due</Label>
                         <Input
                             id="ms-due"
+                            type="date"
                             value={due}
                             onChange={(e) => setDue(e.target.value)}
                             placeholder="Feb 27"

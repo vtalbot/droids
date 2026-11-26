@@ -11,7 +11,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
     Select,
@@ -20,15 +19,20 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import {
-    PROVIDERS,
-    ROLES,
-    type Droid,
-    type Project,
-    type Provider,
-} from '@/factory/data';
+import { PROVIDERS, ROLES, type Project, type Provider } from '@/factory/data';
 import { DroidAvatar } from '@/factory/droid-avatar';
 import { cn } from '@/lib/utils';
+
+export type NewDroid = {
+    name: string;
+    provider: Provider;
+    model: string;
+    role: string;
+    project: string;
+    autonomy: string;
+    instructions: string;
+    seed: number;
+};
 
 const NAMES = [
     'Bolt',
@@ -52,15 +56,15 @@ export function AssembleDialog({
     defaultProject,
     onCreate,
     nextSeed,
-    count,
+    nextUnit,
 }: {
     open: boolean;
     onOpenChange: (o: boolean) => void;
     projects: Project[];
     defaultProject: string;
-    onCreate: (d: Droid) => void;
+    onCreate: (d: NewDroid) => Promise<boolean>;
     nextSeed: number;
-    count: (p: Provider) => number;
+    nextUnit: (p: Provider) => string;
 }) {
     const [provider, setProvider] = useState<Provider>('claude');
     const [model, setModel] = useState('Sonnet 5.5');
@@ -69,6 +73,10 @@ export function AssembleDialog({
     const [project, setProject] = useState(defaultProject);
     const [auto, setAuto] = useState('pr');
     const [seed, setSeed] = useState(nextSeed);
+    const [instructions, setInstructions] = useState(
+        'Write tests first. Keep PRs under 400 lines. Ask before adding a dependency.',
+    );
+    const [busy, setBusy] = useState(false);
     useEffect(() => {
         if (open) {
             setProject(defaultProject);
@@ -76,33 +84,27 @@ export function AssembleDialog({
             setName(NAMES[nextSeed % NAMES.length]);
         }
     }, [open]); // eslint-disable-line
-    const unit = `${provider === 'claude' ? 'CL' : 'CX'}-${String(count(provider) + 20).padStart(2, '0')}`;
+    const unit = nextUnit(provider);
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-h-[calc(100%-2rem)] overflow-y-auto sm:max-w-[600px]">
                 <form
-                    onSubmit={(e) => {
+                    onSubmit={async (e) => {
                         e.preventDefault();
-                        onCreate({
-                            id:
-                                unit.toLowerCase().replace('-', '') +
-                                (Date.now() % 1000),
-                            unit,
+                        setBusy(true);
+                        const ok = await onCreate({
                             name: name.trim() || 'Droid',
                             provider,
                             model,
                             role,
-                            status: 'idle',
                             project,
-                            task: null,
-                            step: '',
-                            progress: 0,
-                            minutes: 0,
-                            cost: 0,
+                            autonomy: auto,
+                            instructions,
                             seed,
                         });
-                        onOpenChange(false);
+                        setBusy(false);
+                        if (ok) onOpenChange(false);
                     }}
                     className="grid gap-5"
                 >
@@ -296,48 +298,12 @@ export function AssembleDialog({
                         </RadioGroup>
                     </div>
 
-                    <div className="grid gap-2.5">
-                        <Label>GitHub permissions</Label>
-                        {[
-                            [
-                                'pk1',
-                                'Push branches and open pull requests',
-                                true,
-                            ],
-                            [
-                                'pk2',
-                                'Comment on issues and move cards on the Project board',
-                                true,
-                            ],
-                            [
-                                'pk3',
-                                'Pick up issues from Ready on its own',
-                                false,
-                            ],
-                        ].map(([id, l, c]) => (
-                            <div
-                                key={id as string}
-                                className="flex items-center gap-2.5"
-                            >
-                                <Checkbox
-                                    id={id as string}
-                                    defaultChecked={c as boolean}
-                                />
-                                <Label
-                                    htmlFor={id as string}
-                                    className="font-normal"
-                                >
-                                    {l}
-                                </Label>
-                            </div>
-                        ))}
-                    </div>
-
                     <div className="grid gap-2">
                         <Label htmlFor="d-ins">Instructions</Label>
                         <Textarea
                             id="d-ins"
-                            defaultValue="Write tests first. Keep PRs under 400 lines. Ask before adding a dependency."
+                            value={instructions}
+                            onChange={(e) => setInstructions(e.target.value)}
                         />
                     </div>
 
@@ -349,7 +315,9 @@ export function AssembleDialog({
                         >
                             Cancel
                         </Button>
-                        <Button type="submit">Assemble {unit}</Button>
+                        <Button type="submit" disabled={busy}>
+                            Assemble {unit}
+                        </Button>
                     </DialogFooter>
                 </form>
             </DialogContent>
@@ -364,18 +332,28 @@ export function ConnectDialog({
 }: {
     open: boolean;
     onOpenChange: (o: boolean) => void;
-    onConnect: (repo: string, board: string) => void;
+    onConnect: (repo: string, board: string) => Promise<boolean>;
 }) {
-    const [repo, setRepo] = useState('acme/mobile-app');
-    const [board, setBoard] = useState('Mobile launch');
+    const [repo, setRepo] = useState('');
+    const [board, setBoard] = useState('');
+    const [busy, setBusy] = useState(false);
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[480px]">
                 <form
-                    onSubmit={(e) => {
+                    onSubmit={async (e) => {
                         e.preventDefault();
-                        onConnect(repo.trim() || 'acme/mobile-app', board);
-                        onOpenChange(false);
+                        setBusy(true);
+                        const ok = await onConnect(
+                            repo.trim(),
+                            board.trim() || 'Roadmap',
+                        );
+                        setBusy(false);
+                        if (ok) {
+                            setRepo('');
+                            setBoard('');
+                            onOpenChange(false);
+                        }
                     }}
                     className="grid gap-5"
                 >
@@ -383,7 +361,8 @@ export function ConnectDialog({
                         <DialogTitle>Connect a repository</DialogTitle>
                         <DialogDescription>
                             Link a GitHub repo and the GitHub Project board your
-                            droids will work from.
+                            droids will work from. Syncing issues and the board
+                            starts once the GitHub App is installed.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-2">
@@ -394,56 +373,17 @@ export function ConnectDialog({
                             value={repo}
                             onChange={(e) => setRepo(e.target.value)}
                             placeholder="owner/repo"
+                            required
                         />
                     </div>
                     <div className="grid gap-2">
                         <Label htmlFor="c-board">GitHub Project</Label>
-                        <Select value={board} onValueChange={setBoard}>
-                            <SelectTrigger id="c-board" className="w-full">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="Mobile launch">
-                                    Mobile launch (acme · #12)
-                                </SelectItem>
-                                <SelectItem value="Bugs">
-                                    Bugs (acme · #3)
-                                </SelectItem>
-                                <SelectItem value="New Project">
-                                    Create a new Project
-                                </SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                        <div className="grid gap-2">
-                            <Label htmlFor="c-field">Status field</Label>
-                            <Select defaultValue="Status">
-                                <SelectTrigger id="c-field" className="w-full">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="Status">
-                                        Status
-                                    </SelectItem>
-                                    <SelectItem value="Stage">Stage</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="grid gap-2">
-                            <Label htmlFor="c-pick">Droids pick from</Label>
-                            <Select defaultValue="Ready">
-                                <SelectTrigger id="c-pick" className="w-full">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="Ready">Ready</SelectItem>
-                                    <SelectItem value="Backlog">
-                                        Backlog
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
+                        <Input
+                            id="c-board"
+                            value={board}
+                            onChange={(e) => setBoard(e.target.value)}
+                            placeholder="Roadmap"
+                        />
                     </div>
                     <DialogFooter>
                         <Button
@@ -453,7 +393,9 @@ export function ConnectDialog({
                         >
                             Cancel
                         </Button>
-                        <Button type="submit">Connect</Button>
+                        <Button type="submit" disabled={busy}>
+                            Connect
+                        </Button>
                     </DialogFooter>
                 </form>
             </DialogContent>

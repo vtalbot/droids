@@ -25,16 +25,11 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import {
-    DAYS,
-    nowSlot,
-    PROVIDERS,
-    type Provider,
-    type Subscription,
-} from '@/factory/data';
+import { DAYS, nowSlot, PROVIDERS, type Provider } from '@/factory/data';
 import { EngineLogo } from '@/factory/logos';
 import { DroidAvatar } from '@/factory/droid-avatar';
 import { cn } from '@/lib/utils';
+import { useSave } from '@/factory/api';
 import type { Store } from '@/factory/app';
 
 export const activeSub = (store: Store, pv: Provider) => {
@@ -141,6 +136,7 @@ export function SubscriptionsView({
 
 function Usage({ store, bump }: { store: Store; bump: () => void }) {
     const NOW = nowSlot();
+    const save = useSave();
     return (['claude', 'codex'] as Provider[]).map((pv) => {
         const now = activeSub(store, pv);
         const droids = store.droids.filter(
@@ -296,6 +292,11 @@ function Usage({ store, bump }: { store: Store; bump: () => void }) {
                                             onCheckedChange={(v) => {
                                                 store.paused[s.id] = !v;
                                                 bump();
+                                                void save(
+                                                    'PATCH',
+                                                    `/factory/subscriptions/${encodeURIComponent(s.id)}`,
+                                                    { enabled: v },
+                                                );
                                                 toast(
                                                     `${s.name} ${v ? 'enabled' : 'paused'}`,
                                                 );
@@ -318,15 +319,26 @@ function Schedule({ store, bump }: { store: Store; bump: () => void }) {
         codex: store.subs.find((s) => s.provider === 'codex')?.id ?? '',
     }));
     const painting = useRef<Provider | null>(null);
+    const save = useSave();
+    const saveRef = useRef(save);
+    saveRef.current = save;
+    const dirty = useRef(new Set<Provider>());
     useEffect(() => {
         const up = () => {
             painting.current = null;
+            dirty.current.forEach((pv) => {
+                void saveRef.current('PUT', `/factory/schedules/${pv}`, {
+                    grid: store.schedule[pv],
+                });
+            });
+            dirty.current.clear();
         };
         addEventListener('pointerup', up);
         return () => removeEventListener('pointerup', up);
-    }, []);
+    }, [store]);
     const paint = (pv: Provider, d: number, h: number) => {
         store.schedule[pv][d][h] = brush[pv] === 'off' ? '' : brush[pv];
+        dirty.current.add(pv);
         bump();
     };
     const sub = (id: string) => store.subs.find((s) => s.id === id);
@@ -526,9 +538,11 @@ function Schedule({ store, bump }: { store: Store; bump: () => void }) {
     );
 }
 
-const COLORS: Record<Provider, string[]> = {
-    claude: ['oklch(0.72 0.12 60)', 'oklch(0.55 0.13 20)'],
-    codex: ['oklch(0.68 0.13 240)', 'oklch(0.5 0.16 300)'],
+export type NewSubscription = {
+    provider: Provider;
+    plan: string;
+    account: string;
+    api_key?: string;
 };
 
 export function AddSubscriptionDialog({
@@ -538,11 +552,13 @@ export function AddSubscriptionDialog({
 }: {
     open: boolean;
     onOpenChange: (o: boolean) => void;
-    onAdd: (s: Subscription) => void;
+    onAdd: (s: NewSubscription) => Promise<boolean>;
 }) {
     const [pv, setPv] = useState<Provider>('claude');
     const [plan, setPlan] = useState('Claude Pro');
-    const [name, setName] = useState('Side projects');
+    const [name, setName] = useState('');
+    const [key, setKey] = useState('');
+    const [busy, setBusy] = useState(false);
     const plans: Record<Provider, string[]> = {
         claude: [
             'Claude Pro',
@@ -563,35 +579,20 @@ export function AddSubscriptionDialog({
             <DialogContent className="sm:max-w-[500px]">
                 <form
                     className="grid gap-5"
-                    onSubmit={(e) => {
+                    onSubmit={async (e) => {
                         e.preventDefault();
-                        onAdd({
-                            id: `s${Date.now() % 100000}`,
+                        setBusy(true);
+                        const ok = await onAdd({
                             provider: pv,
-                            name: plan,
-                            account: name || 'Untitled',
-                            auth: api
-                                ? 'API key ••••a91e'
-                                : `Signed in with ${pv === 'claude' ? 'Claude' : 'ChatGPT'}`,
-                            color: COLORS[pv][Math.floor(Math.random() * 2)],
-                            windows: api
-                                ? []
-                                : [
-                                      {
-                                          label: '5-hour window',
-                                          used: 0,
-                                          resets: 'not started',
-                                      },
-                                      {
-                                          label: 'Weekly limit',
-                                          used: 0,
-                                          resets: 'resets in 7 days',
-                                      },
-                                  ],
-                            spend: api ? { used: 0, cap: 100 } : undefined,
-                            week: [0, 0, 0, 0, 0, 0, 0],
+                            plan,
+                            account: name.trim(),
+                            api_key: api ? key.trim() : undefined,
                         });
-                        onOpenChange(false);
+                        setBusy(false);
+                        if (ok) {
+                            setKey('');
+                            onOpenChange(false);
+                        }
                     }}
                 >
                     <DialogHeader>
@@ -662,6 +663,10 @@ export function AddSubscriptionDialog({
                             <Input
                                 id="sub-key"
                                 type="password"
+                                value={key}
+                                onChange={(e) => setKey(e.target.value)}
+                                required
+                                autoComplete="off"
                                 placeholder={
                                     pv === 'claude' ? 'sk-ant-…' : 'sk-…'
                                 }
@@ -670,8 +675,9 @@ export function AddSubscriptionDialog({
                     ) : (
                         <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
                             You'll sign in with your{' '}
-                            {pv === 'claude' ? 'Claude' : 'ChatGPT'} account in
-                            a browser window. Droids never see your password.
+                            {pv === 'claude' ? 'Claude' : 'ChatGPT'} account on
+                            the droid runner once it's set up. Droids never see
+                            your password.
                         </p>
                     )}
                     <DialogFooter>
@@ -682,10 +688,8 @@ export function AddSubscriptionDialog({
                         >
                             Cancel
                         </Button>
-                        <Button type="submit">
-                            {api
-                                ? 'Add key'
-                                : `Sign in with ${pv === 'claude' ? 'Claude' : 'ChatGPT'}`}
+                        <Button type="submit" disabled={busy}>
+                            {api ? 'Add key' : 'Add subscription'}
                         </Button>
                     </DialogFooter>
                 </form>

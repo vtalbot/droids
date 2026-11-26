@@ -40,6 +40,7 @@ import {
 import { DroidAvatar } from '@/factory/droid-avatar';
 import { EngineLogo } from '@/factory/logos';
 import { cn } from '@/lib/utils';
+import { useSave } from '@/factory/api';
 import type { Store } from '@/factory/app';
 
 export const PR_STATE: Record<
@@ -160,13 +161,28 @@ export function TaskSheet({
     const s = pr ? checkSummary(pr) : undefined;
     const canMerge = pr && pr.state === 'approved' && s?.state === 'pass';
 
-    const move = (col: ColKey) => {
+    const save = useSave();
+    const shift = (col: ColKey) => {
         if (!i || !p) return;
         if (col === 'done' && i.col !== 'done') p.done++;
         if (i.col === 'done' && col !== 'done') p.done--;
         i.col = col;
         bump();
-        toast(`#${i.n} moved to ${COLS.find((c) => c.key === col)!.label}`);
+    };
+    const move = (col: ColKey) => {
+        if (!i) return;
+        shift(col);
+        void save(
+            'PATCH',
+            `/factory/projects/${encodeURIComponent(i.project)}/tasks/${i.n}`,
+            { column: col },
+        ).then(
+            (res) =>
+                res &&
+                toast(
+                    `#${i.n} moved to ${COLS.find((c) => c.key === col)!.label}`,
+                ),
+        );
     };
     const rerun = () => {
         if (!pr) return;
@@ -190,11 +206,14 @@ export function TaskSheet({
     };
     const merge = () => {
         if (!pr || !i) return;
+        // Simulated until the GitHub App can merge for real (phase 3).
         pr.state = 'merged';
-        move('done');
+        shift('done');
         if (r && r.task === i.n)
             Object.assign(r, { status: 'idle', task: null, step: '' });
-        toast.success(`PR #${pr.n} merged into main`);
+        toast.success(`PR #${pr.n} merged (preview)`, {
+            description: 'Merging on GitHub arrives with the GitHub App',
+        });
     };
 
     return (

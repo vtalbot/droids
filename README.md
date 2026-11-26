@@ -25,10 +25,12 @@ composer dev            # app, queue, logs and Vite
 
 `php artisan db:seed --class=FactoryDemoSeeder` reloads only the sample factory.
 
+Sign-up is open only until the first account exists. Set `DROIDS_OPEN_REGISTRATION=true` to let more people register.
+
 ## Roadmap
 
-1. Scaffold and UI shell (this phase): every screen renders from the database, seeded with sample data.
-2. Core data and actions: create and edit droids, tasks, milestones, subscriptions and the schedule.
+1. Scaffold and UI shell: every screen renders from the database, seeded with sample data.
+2. Core data and actions (in progress): board moves, assignments, droids, tasks, milestones, features, subscriptions and the schedule are saved.
 3. GitHub App: repos, Projects v2 sync, PRs, checks and reviews through webhooks.
 4. Droid runners: Claude Code and Codex on your subscriptions, following the schedule and fallback rules.
 5. Planner, Reflect and "Propose what's next".
