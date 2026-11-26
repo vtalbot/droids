@@ -42,13 +42,24 @@ fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /
 echo '/swapfile none swap sw 0 0' >> /etc/fstab
 ```
 
-Install PHP 8.3 (Ubuntu 24.04 ships it), the extensions Laravel needs, Nginx, SQLite and Git:
+Ubuntu 24.04 ships PHP 8.3, so install PHP 8.5 from the widely used [ondrej/php PPA](https://launchpad.net/~ondrej/+archive/ubuntu/php):
+
+```bash
+apt install -y software-properties-common
+add-apt-repository -y ppa:ondrej/php
+apt update
+```
+
+Then install PHP 8.5, the extensions Laravel needs, Nginx, SQLite and Git:
 
 ```bash
 apt install -y nginx git unzip sqlite3 \
-  php8.3-fpm php8.3-cli php8.3-sqlite3 php8.3-mbstring php8.3-xml \
-  php8.3-curl php8.3-zip php8.3-intl php8.3-bcmath
+  php8.5-fpm php8.5-cli php8.5-sqlite3 php8.5-mbstring php8.5-xml \
+  php8.5-curl php8.5-zip php8.5-intl php8.5-bcmath
+php -v   # should print PHP 8.5.x
 ```
+
+OPcache is built into PHP 8.5, so there is no separate `php8.5-opcache` package to install. If `php -v` still shows another version, switch the default with `update-alternatives --set php /usr/bin/php8.5`.
 
 Install Composer:
 
@@ -179,7 +190,7 @@ server {
     error_page 404 /index.php;
 
     location ~ ^/index\.php(/|$) {
-        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+        fastcgi_pass unix:/run/php/php8.5-fpm.sock;
         fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
         include fastcgi_params;
         fastcgi_hide_header X-Powered-By;
@@ -311,13 +322,13 @@ php artisan migrate --force
 php artisan optimize
 php artisan up
 
-sudo systemctl reload php8.3-fpm
+sudo systemctl reload php8.5-fpm
 ```
 
 The last line reloads PHP-FPM, which clears OPcache. For `deploy` to run it without a password, add a sudoers rule with `visudo -f /etc/sudoers.d/deploy`:
 
 ```
-deploy ALL=NOPASSWD: /usr/bin/systemctl reload php8.3-fpm
+deploy ALL=NOPASSWD: /usr/bin/systemctl reload php8.5-fpm
 ```
 
 ## 12. Backups
