@@ -156,6 +156,8 @@ class GitHubTest extends TestCase
         $this->assertSame(777, $app->app_id);
         $this->assertSame('w', $app->webhook_secret);
         $this->assertStringNotContainsString('PRIVATE KEY', (string) $app->getRawOriginal('private_key'));
+        // GitHub rejects a JSON [] body on these endpoints, so none may be sent.
+        Http::assertSent(fn (Request $r) => str_contains($r->url(), '/conversions') && $r->body() === '');
     }
 
     public function test_manifest_callback_rejects_a_wrong_state(): void
@@ -341,6 +343,8 @@ class GitHubTest extends TestCase
         ]);
 
         $this->postJson('/factory/projects/droids/pulls/9/rerun')->assertOk()->assertJsonPath('rerun', 1);
+        Http::assertSent(fn (Request $r) => str_contains($r->url(), '/access_tokens') && $r->body() === '');
+        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'jobs/555/rerun') && $r->body() === '');
         Http::assertNotSent(fn (Request $r) => str_contains($r->url(), 'jobs/556'));
     }
 
