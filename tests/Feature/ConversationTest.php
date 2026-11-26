@@ -212,37 +212,45 @@ class ConversationTest extends TestCase
         $this->assertSame(0, Run::count());
     }
 
-    public function test_recruiting_reads_the_crew_and_proposes_candidates(): void
+    public function test_an_hr_droid_proposes_candidates_from_the_request(): void
     {
         $this->project->tasks()->first()->update(['labels' => ['ui', 'bug']]);
-        $this->ask('recruit', 'Suggest droids for this project.')->assertCreated()
-            ->assertJsonPath('store.asks.recruit:droids.kind', 'recruit');
+        ChatMessage::create(['droid_id' => $this->droid->id, 'topic' => 'recruit', 'kind' => 'candidates', 'payload' => ['items' => [['name' => 'Probe']]]]);
+        $this->postJson('/factory/droids/cog/ask', ['kind' => 'recruit', 'text' => 'I need a security reviewer.'])->assertCreated()
+            ->assertJsonPath('store.asks.recruit.kind', 'recruit');
         $job = $this->claim();
 
         $this->assertSame('recruit', $job['kind']);
-        $this->assertSame('vtalbot/droids', $job['repo']);
-        $this->assertStringContainsString('- CL-01 Cog: Planner on claude Opus 5.5', $job['prompt']);
-        $this->assertStringContainsString('Most common labels: ui (1), bug (1)', $job['prompt']);
-        $this->assertStringContainsString('Builder, Reviewer, Designer, Tester, Planner, Docs', $job['prompt']);
-        $this->assertStringContainsString('"candidates"', $job['prompt']);
-        $this->assertStringContainsString('do not change, commit or push', $job['prompt']);
+        $this->assertNull($job['repo'], 'recruiting looks at the whole factory, not one clone');
+        $this->assertNull($job['memory']);
+        $this->assertStringContainsString('You are the HR droid', $job['prompt']);
+        $this->assertStringContainsString('- CL-01 Cog: Planner on claude Opus 5.5, on Droids', $job['prompt']);
+        $this->assertStringContainsString('- Droids (vtalbot/droids): 1 open issues, labels: ui (1), bug (1)', $job['prompt']);
+        $this->assertStringContainsString('You already proposed: Probe.', $job['prompt']);
+        $this->assertStringContainsString('Builder, Reviewer, Designer, Tester, Planner, Docs, HR', $job['prompt']);
+        $this->assertStringContainsString('I need a security reviewer.', $job['prompt']);
 
-        $this->finish($job['id'], ['status' => 'succeeded', 'summary' => '{"message": "Four droids.", "candidates": [
-            {"name": "Iris", "role": "Designer", "provider": "claude", "model": "Opus 5.5", "pitch": "I design.", "why": "No design yet.", "instructions": "Keep it small."},
+        $this->finish($job['id'], ['status' => 'succeeded', 'summary' => '{"message": "Two droids.", "candidates": [
+            {"name": "Warden", "role": "Reviewer", "provider": "claude", "model": "Opus 5.5", "pitch": "I review.", "why": "You asked.", "instructions": "Check auth."},
             {"name": "Bolt", "role": "Wizard", "provider": "codex", "model": "GPT-9", "pitch": "I build."},
             {"name": "", "role": "Builder"}
         ]}']);
 
-        $chat = $this->getJson('/factory/state')->json('store.chats.recruit:droids');
-        $this->assertSame(['agent', 'user', 'agent', 'candidates'], array_column($chat, 'kind'));
+        $chat = $this->getJson('/factory/state')->json('store.chats.recruit');
+        $this->assertSame(['candidates', 'user', 'agent', 'candidates'], array_column($chat, 'kind'));
         $this->assertSame([
-            ['name' => 'Iris', 'role' => 'Designer', 'provider' => 'claude', 'model' => 'Opus 5.5', 'pitch' => 'I design.', 'why' => 'No design yet.', 'instructions' => 'Keep it small.'],
+            ['name' => 'Warden', 'role' => 'Reviewer', 'provider' => 'claude', 'model' => 'Opus 5.5', 'pitch' => 'I review.', 'why' => 'You asked.', 'instructions' => 'Check auth.'],
             ['name' => 'Bolt', 'role' => 'Builder', 'provider' => 'codex', 'model' => 'GPT-5.1-Codex', 'pitch' => 'I build.', 'why' => '', 'instructions' => ''],
         ], $chat[3]['items']);
     }
 
-    public function test_recruiting_needs_a_project(): void
+    public function test_droids_can_be_assembled_without_a_project(): void
     {
-        $this->postJson('/factory/droids/cog/ask', ['kind' => 'recruit', 'text' => 'Suggest'])->assertJsonValidationErrors('project');
+        $this->postJson('/factory/droids', ['name' => 'Mira', 'provider' => 'claude', 'model' => 'Sonnet 5.5', 'role' => 'HR', 'autonomy' => 'pr', 'instructions' => 'Hire well.'])
+            ->assertCreated();
+
+        $mira = Droid::where('name', 'Mira')->sole();
+        $this->assertNull($mira->project_id);
+        $this->assertSame('HR', $mira->role);
     }
 }

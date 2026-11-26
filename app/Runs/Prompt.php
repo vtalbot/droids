@@ -9,7 +9,7 @@ use Illuminate\Http\Client\RequestException;
 /** Writes the instructions a builder droid gets for its task. */
 class Prompt
 {
-    public function __construct(private GitHub $github, private Design $design) {}
+    public function __construct(private GitHub $github, private Design $design, private Memory $memory) {}
 
     public function build(Run $run): string
     {
@@ -32,7 +32,7 @@ class Prompt
         if ($droid->instructions) {
             $lines = [...$lines, '', 'Standing instructions from your operator:', $droid->instructions];
         }
-        $lines = [...$lines, ...$this->design->promptLines($project, 'build')];
+        $lines = [...$lines, ...$this->design->promptLines($project, 'build'), ...$this->memory->promptLines($project, true)];
         $fix = $run->kind === 'fix';
         if ($fix) {
             $lines = [...$lines, '', "A reviewer looked at pull request #{$run->pr_number} and asked for these changes:", (string) $run->input];

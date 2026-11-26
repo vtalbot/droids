@@ -3,6 +3,7 @@
 namespace App\Worker;
 
 use App\Runs\Design;
+use App\Runs\Memory;
 use Closure;
 use Illuminate\Support\Facades\File;
 use RuntimeException;
@@ -65,6 +66,7 @@ class Runner
                 $this->git(['checkout', (string) $job['branch']], $dir); // the pull request's branch, from origin
             }
             $this->placeDesign($job, $dir);
+            $memory = $this->placeMemory($job, $dir);
             if ($build) {
                 $this->git(['config', 'user.name', trim("{$job['droid']['unit']} {$job['droid']['name']}")], $dir);
                 $this->git(['config', 'user.email', 'droids@users.noreply.github.com'], $dir);
@@ -85,6 +87,10 @@ class Runner
 
             $pushed = $build && $this->commitAndPush($job, $dir, $say);
             $result = ['status' => 'succeeded', 'pushed' => $pushed];
+            if ($memory !== null && is_file($file = $dir.'/'.Memory::FILE) && ($edited = (string) file_get_contents($file)) !== $memory) {
+                $result += ['memory' => $edited, 'memory_base' => $memory];
+                $say('Sending the updated shared memory');
+            }
             if ($kind === 'design') {
                 $result['design'] = $this->collectDesign($dir);
                 $say('Sending '.count($result['design']).' design file(s)');
@@ -187,7 +193,7 @@ class Runner
         $folder = './'.Design::DIR.'/**';
         $tools = match ($job['kind'] ?? '') {
             'review' => 'Read,Grep,Glob,LS,Bash(git diff:*),Bash(git log:*),Bash(git show:*)',
-            'design' => "Read,Grep,Glob,LS,Edit({$folder}),Write({$folder})",
+            'design' => "Read,Grep,Glob,LS,Edit({$folder}),Write({$folder}),Edit(./".Memory::FILE.')',
             default => 'Read,Grep,Glob,LS',
         };
 
@@ -217,10 +223,35 @@ class Runner
             File::ensureDirectoryExists(dirname("{$root}/{$path}"));
             File::put("{$root}/{$path}", (string) ($f['content'] ?? ''));
         }
-        if (File::isDirectory("{$dir}/.git")) {
-            File::ensureDirectoryExists("{$dir}/.git/info");
-            File::append("{$dir}/.git/info/exclude", "\n/".explode('/', Design::DIR)[0]."/\n");
+        $this->exclude($dir);
+    }
+
+    /**
+     * Put the project's shared memory in the working folder, and return what was written.
+     *
+     * @param  array<string, mixed>  $job
+     */
+    private function placeMemory(array $job, string $dir): ?string
+    {
+        if (! is_string($job['memory'] ?? null)) {
+            return null;
         }
+        File::ensureDirectoryExists(dirname($dir.'/'.Memory::FILE));
+        File::put($dir.'/'.Memory::FILE, $job['memory']);
+        $this->exclude($dir);
+
+        return $job['memory'];
+    }
+
+    /** Keep the .droids folder out of git, so a build never commits it. */
+    private function exclude(string $dir): void
+    {
+        $file = "{$dir}/.git/info/exclude";
+        if (! File::isDirectory("{$dir}/.git") || (File::exists($file) && str_contains(File::get($file), '/.droids/'))) {
+            return;
+        }
+        File::ensureDirectoryExists(dirname($file));
+        File::append($file, "\n/.droids/\n");
     }
 
     /**

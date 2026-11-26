@@ -134,6 +134,10 @@ export type Store = {
     asks?: Record<string, Ask>;
     cloudConnected?: boolean;
     design?: Record<string, DesignFile[]>;
+    memory?: Record<
+        string,
+        { text: string; by?: string | null; updated?: string | null }
+    >;
     workers?: { total: number; online: number };
 };
 export type Run = {
@@ -302,7 +306,7 @@ export default function FactoryApp({
     const droid = (id?: string | null) => store.droids.find((d) => d.id === id);
     const proj = (id: string) =>
         store.projects.find((p) => p.id === id) ?? store.projects[0];
-    const inProj = (p: string) => project === 'all' || p === project;
+    const inProj = (p: string | null) => project === 'all' || p === project;
 
     // Write to the server, then reconcile with the store it returns. On failure,
     // show why and reload the server's state to undo the optimistic change.
@@ -805,18 +809,12 @@ export default function FactoryApp({
                     defaultRole={assembleRole}
                     open={assembleOpen}
                     onOpenChange={setAssembleOpen}
-                    projects={store.projects}
-                    defaultProject={
-                        project === 'all'
-                            ? (store.projects[0]?.id ?? '')
-                            : project
-                    }
                     onCreate={async (d) => {
                         const res = await save('POST', '/factory/droids', d);
                         const made = res && droid(res.droid as string);
                         if (made)
                             toast.success(
-                                `${made.unit} ${made.name} assembled on ${proj(made.project).name}`,
+                                `${made.unit} ${made.name} assembled${made.project ? ` on ${proj(made.project).name}` : ''}`,
                             );
                         return !!res;
                     }}
@@ -863,7 +861,7 @@ type Ctx = {
     bump: () => void;
     droid: (id?: string | null) => Droid | undefined;
     proj: (id: string) => Project;
-    inProj: (p: string) => boolean;
+    inProj: (p: string | null) => boolean;
     project: string;
     assign: (
         pid: string,
@@ -1070,8 +1068,9 @@ function Hangar({
                                         </span>{' '}
                                         {f.text}
                                         <div className="text-xs text-muted-foreground">
-                                            {ago(f.min)} ·{' '}
-                                            {proj(d.project).name}
+                                            {ago(f.min)}
+                                            {d.project &&
+                                                ` · ${proj(d.project).name}`}
                                         </div>
                                     </div>
                                 </li>
@@ -1094,7 +1093,7 @@ function DroidCard({
     const i = store.issues.find(
         (x) => x.n === d.task && x.project === d.project,
     );
-    const p = proj(d.project);
+    const p = d.project ? proj(d.project) : null;
     return (
         <Card
             className={cn(
@@ -1129,7 +1128,10 @@ function DroidCard({
             <CardContent className="grid gap-2.5 px-4">
                 {d.status === 'idle' ? (
                     <p className="text-sm text-muted-foreground">
-                        Docked and charged. Ready for a task from {p.name}.
+                        Docked and charged.{' '}
+                        {p
+                            ? `Ready for a task from ${p.name}.`
+                            : 'Ready for a task on any project.'}
                     </p>
                 ) : (
                     <>
@@ -1137,9 +1139,9 @@ function DroidCard({
                             <div className="mb-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
                                 <span
                                     className="size-2 rounded-[2px]"
-                                    style={{ background: p.color }}
+                                    style={{ background: p?.color }}
                                 />
-                                {p.repo}
+                                {p?.repo}
                             </div>
                             <span className="mr-1 font-mono text-muted-foreground">
                                 #{d.task}
@@ -1177,7 +1179,7 @@ function DroidCard({
                         <span>${d.cost.toFixed(2)}</span>
                     </>
                 ) : (
-                    <span>{p.name}</span>
+                    <span>{p?.name ?? 'No project yet'}</span>
                 )}
                 <span className="flex-1" />
                 {d.status === 'idle' && (
@@ -1840,7 +1842,9 @@ function Roster({
                                             <StatusBadge s={d.status} />
                                         </TableCell>
                                         <TableCell className="font-mono text-xs">
-                                            {proj(d.project).repo}
+                                            {d.project
+                                                ? proj(d.project).repo
+                                                : '—'}
                                         </TableCell>
                                         <TableCell className="max-w-[280px] whitespace-normal">
                                             {i ? (

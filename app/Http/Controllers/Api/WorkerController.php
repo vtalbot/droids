@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Run;
 use App\Models\Worker;
 use App\Runs\Design;
+use App\Runs\Memory;
 use App\Runs\RunQueue;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -66,6 +67,8 @@ class WorkerController extends Controller
             'design' => ['nullable', 'array', 'max:'.Design::MAX_FILES],
             'design.*.path' => ['required', 'string', 'max:200'],
             'design.*.content' => ['present', 'nullable', 'string', 'max:'.Design::MAX_BYTES],
+            'memory' => ['nullable', 'string', 'max:'.(Memory::MAX_BYTES * 2)],
+            'memory_base' => ['nullable', 'string', 'max:'.(Memory::MAX_BYTES * 2)],
         ]);
         if (isset($data['design'])) {
             $data['design'] = array_values(array_map(fn (array $f) => ['path' => (string) $f['path'], 'content' => (string) ($f['content'] ?? '')], $data['design']));

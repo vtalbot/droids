@@ -35,6 +35,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('projects/{project:slug}/design', [Factory\DesignController::class, 'index'])->name('design.index');
         Route::delete('projects/{project:slug}/design', [Factory\DesignController::class, 'destroy'])->name('design.destroy');
+        Route::put('projects/{project:slug}/memory', [Factory\DesignController::class, 'memory'])->name('memory.update');
 
         Route::get('github/repos', [Factory\GitHubController::class, 'repos'])->name('github.repos');
         Route::post('projects/{project:slug}/sync', [Factory\GitHubController::class, 'sync'])->name('projects.sync');

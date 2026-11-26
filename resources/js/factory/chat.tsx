@@ -173,7 +173,9 @@ export function ChatSheet({
                         kind: 'agent',
                         text:
                             d.status === 'idle'
-                                ? `${d.unit} online and docked. Give me an issue from **${proj(d.project).board}**, or ask me anything about \`${proj(d.project).repo}\`.`
+                                ? d.project
+                                    ? `${d.unit} online and docked. Give me an issue from **${proj(d.project).board}**, or ask me anything about \`${proj(d.project).repo}\`.`
+                                    : `${d.unit} online and docked. Give me an issue from any board, or ask me anything.`
                                 : `Working on **#${d.task}**. Current step: ${d.step}.`,
                     },
                 ];
@@ -328,14 +330,20 @@ export function ChatSheet({
                             ) : issue ? (
                                 <>
                                     <span className="font-mono text-xs">
-                                        {proj(d.project).repo}#{issue.n}
+                                        {issue.project &&
+                                            proj(issue.project).repo}
+                                        #{issue.n}
                                     </span>
                                     <span className="truncate text-foreground">
                                         {issue.title}
                                     </span>
                                 </>
                             ) : (
-                                <span>Docked on {proj(d.project).name}</span>
+                                <span>
+                                    {d.project
+                                        ? `Docked on ${proj(d.project).name}`
+                                        : 'Not on a project yet'}
+                                </span>
                             )}
                         </div>
                         <Conversation className="min-h-0">
@@ -548,9 +556,7 @@ function ChatRow({
     if (m.kind === 'candidates')
         return (
             <Task defaultOpen>
-                <TaskTrigger
-                    title={`Suggested droids for ${proj(m.project).name}: pick one in Assemble droid`}
-                />
+                <TaskTrigger title="Suggested droids: pick one in Assemble droid" />
                 <TaskContent>
                     {m.items.map((c) => (
                         <TaskItem key={`${c.name}-${c.role}`}>

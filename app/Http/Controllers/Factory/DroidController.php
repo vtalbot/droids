@@ -12,7 +12,7 @@ use Illuminate\Validation\Rule;
 
 class DroidController extends Controller
 {
-    public const ROLES = ['Builder', 'Reviewer', 'Designer', 'Tester', 'Planner', 'Docs'];
+    public const ROLES = ['Builder', 'Reviewer', 'Designer', 'Tester', 'Planner', 'Docs', 'HR'];
 
     /** The models offered per engine, as the UI labels them. */
     public const MODELS = [
@@ -27,7 +27,7 @@ class DroidController extends Controller
             'provider' => ['required', Rule::in(['claude', 'codex'])],
             'model' => ['required', 'string', 'max:60'],
             'role' => ['required', Rule::in(self::ROLES)],
-            'project' => ['required', 'string', 'exists:projects,slug'],
+            'project' => ['nullable', 'string', 'exists:projects,slug'],
             'autonomy' => ['required', Rule::in(['ask', 'pr', 'merge'])],
             'instructions' => ['nullable', 'string', 'max:5000'],
             'seed' => ['nullable', 'integer', 'min:0', 'max:999'],
@@ -47,7 +47,7 @@ class DroidController extends Controller
                 'model' => $data['model'],
                 'role' => $data['role'],
                 'status' => 'idle',
-                'project_id' => Project::where('slug', $data['project'])->value('id'),
+                'project_id' => isset($data['project']) ? Project::where('slug', $data['project'])->value('id') : null,
                 'autonomy' => $data['autonomy'],
                 'instructions' => $data['instructions'] ?? null,
                 'seed' => $data['seed'] ?? Droid::count() + 1,

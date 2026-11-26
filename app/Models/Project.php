@@ -21,6 +21,9 @@ use Illuminate\Support\Carbon;
  * @property array<string, mixed>|null $cloud_snapshot
  * @property string|null $cloud_application_id
  * @property Carbon|null $cloud_synced_at
+ * @property string|null $memory
+ * @property int|null $memory_droid_id
+ * @property Carbon|null $memory_updated_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -35,6 +38,7 @@ class Project extends Model
             'cloud_snapshot' => 'array',
             'synced_at' => 'datetime',
             'cloud_synced_at' => 'datetime',
+            'memory_updated_at' => 'datetime',
         ];
     }
 

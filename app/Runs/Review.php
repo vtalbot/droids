@@ -24,7 +24,7 @@ class Review
     /** Inline comments posted per review; the rest go in the body. */
     private const MAX_COMMENTS = 20;
 
-    public function __construct(private RepositoryWriter $writer, private Design $design) {}
+    public function __construct(private RepositoryWriter $writer, private Design $design, private Memory $memory) {}
 
     public function prompt(Run $run): string
     {
@@ -41,7 +41,7 @@ class Review
         if ($droid->instructions) {
             $lines = [...$lines, '', 'Standing instructions from your operator:', $droid->instructions];
         }
-        $lines = [...$lines, ...$this->design->promptLines($task?->project, 'review')];
+        $lines = [...$lines, ...$this->design->promptLines($task?->project, 'review'), ...$this->memory->promptLines($task?->project, false)];
         $failing = collect($pr->checks ?? [])->where('state', 'failure')->pluck('name')->implode(', ');
         if ($failing !== '') {
             $lines = [...$lines, '', "These CI checks are failing on the pull request: {$failing}."];
@@ -56,7 +56,7 @@ class Review
             '- Ask for changes only for real problems: bugs, missing pieces of the issue, missing tests, broken conventions. Mention small things without blocking on them.',
             '',
             'Answer with one JSON object and nothing else: no code fence, no text around it. Its shape:',
-            '{"verdict": "approve" or "changes", "summary": "...", "comments": [{"path": "src/file.ts", "line": 42, "body": "..."}]}',
+            '{"verdict": "approve" or "changes", "summary": "...", "comments": [{"path": "src/file.ts", "line": 42, "body": "..."}], "remember": ["..."]}',
             '"summary" is Markdown for the pull request. "line" is a line number in the new version of the file, on a line the diff changed.',
         ]);
     }
@@ -90,6 +90,7 @@ class Review
             $run->error = 'The review could not be posted on GitHub; its verdict is kept in Droids.';
         }
         $this->record($task->pullRequest, $droid->unit, $verdict);
+        $this->memory->remember($task->project, $droid, Memory::facts($data['remember'] ?? null));
 
         $notes = array_map(fn (array $c) => "- {$c['path']}:{$c['line']}: {$c['body']}", $comments);
 

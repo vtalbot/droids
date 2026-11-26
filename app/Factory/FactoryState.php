@@ -80,6 +80,11 @@ class FactoryState
             'github' => ['configured' => GithubApp::current() !== null],
             'cloudConnected' => CloudConnection::current() !== null,
             'design' => $this->design($slugs, $droidSlugs),
+            'memory' => $projects->filter(fn (Project $p) => $p->memory !== null)->mapWithKeys(fn (Project $p) => [$p->slug => [
+                'text' => $p->memory,
+                'by' => $p->memory_droid_id ? ($droidSlugs[$p->memory_droid_id] ?? null) : null,
+                'updated' => $p->memory_updated_at?->diffForHumans(),
+            ]]),
             'runs' => $this->runs($slugs),
             'asks' => Run::whereIn('kind', Run::ASK_KINDS)->whereIn('status', Run::ACTIVE)->get(['topic', 'kind', 'status'])
                 ->mapWithKeys(fn (Run $r) => [(string) $r->topic => ['kind' => $r->kind, 'status' => $r->status]]),

@@ -63,7 +63,7 @@ php artisan droids:work
 
 It prints the subscriptions it is signed in to, then polls the server every 5 seconds. Settings > Workers shows it as online. Assign a builder to a task on a linked project and the worker picks it up: the droid's step and a live log appear on the task.
 
-The worker also answers conversations: chatting with a droid, planning sessions, "what's next" proposals, Reflect, design sessions and **Suggest a crew** in Assemble droid, where the project's planner reads the repo and proposes droids to add. These run read-only in a shallow clone (Claude Code with only its Read, Grep and Glob tools, Codex in its read-only sandbox), and they go ahead of queued builds. The worker does one job at a time, so a question waits while a build is running.
+The worker also answers conversations: chatting with a droid, planning sessions, "what's next" proposals, Reflect, design sessions and the candidates in **Assemble droid**, where an HR droid reads your request and proposes droids to hire. These run read-only in a shallow clone (Claude Code with only its Read, Grep and Glob tools, Codex in its read-only sandbox), and they go ahead of queued builds. The worker does one job at a time, so a question waits while a build is running.
 
 Leave it running in a terminal tab, or keep it alive with something like `tmux`. `php artisan droids:work --once` runs a single job and exits, which is handy for a first test.
 
@@ -84,6 +84,14 @@ Assemble a droid with the **Designer** role, then open a project's **Design** ta
 It can only write inside that folder: Claude Code gets its read tools plus Edit and Write limited to it, and Codex runs in its workspace-write sandbox. When it finishes, the worker sends the folder back. Droids saves it on the project, and you can preview each file in the Design tab. Ask again to change it: the designer starts from the files already there.
 
 Every other run on the project gets the same files in `.droids/design/` in its clone. Builders, reviewers and planners are told to follow them. The folder is listed in the clone's `.git/info/exclude`, so a build never commits it.
+
+## HR droids and new droids
+
+**Assemble droid** shows candidates instead of a form. Describe the droid you need in the prompt box and the HR droid (the first droid with the **HR** role, else a planner) proposes a few candidates, each with a short pitch. Pick one and press **Assemble**. New droids belong to no project: they join one when you give them a task.
+
+## Shared memory
+
+Each project keeps a shared memory, `.droids/memory.md`, placed in every run's clone. Droids read it before they work and add what the next droid should know, such as how to run the tests or where a rule lives. Builders and designers edit the file; reviewers and conversations add facts through their answer. Two runs that change it at the same time are merged line by line. You can read and edit it in the project's **Memory** tab.
 
 ## How a run picks a subscription
 

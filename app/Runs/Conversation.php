@@ -27,14 +27,14 @@ class Conversation
     /** Builder runs a retrospective looks back over. */
     private const RETRO_RUNS = 10;
 
-    public function __construct(private Design $design) {}
+    public function __construct(private Design $design, private Memory $memory) {}
 
     public static function topic(string $kind, Droid $droid, ?Project $project): string
     {
         return match (true) {
             in_array($kind, ['plan', 'propose'], true) && $project !== null => "plan:{$project->slug}",
             $kind === 'design' && $project !== null => "design:{$project->slug}",
-            $kind === 'recruit' && $project !== null => "recruit:{$project->slug}",
+            $kind === 'recruit' => 'recruit',
             default => $droid->slug,
         };
     }
@@ -42,7 +42,7 @@ class Conversation
     /** The topic as stored on chat messages: null for a droid's own chat. */
     public static function storedTopic(string $topic): ?string
     {
-        return preg_match('/^(plan|design|recruit):/', $topic) === 1 ? $topic : null;
+        return preg_match('/^(plan|design):|^recruit$/', $topic) === 1 ? $topic : null;
     }
 
     public function prompt(Run $run): string
@@ -68,12 +68,13 @@ class Conversation
             'propose' => $this->proposeContext($project),
             'reflect' => $this->reflectContext($droid),
             'design' => $this->designContext($project),
-            'recruit' => $this->recruitContext($project),
+            'recruit' => $this->recruitContext($run),
             default => $this->chatContext($droid),
         }];
         if (! $design) {
             $lines = [...$lines, ...$this->design->promptLines($project, 'conversation')];
         }
+        $lines = [...$lines, ...$this->memory->promptLines($project, $design)];
 
         $history = $this->history($run);
         if ($history !== []) {
@@ -166,37 +167,41 @@ class Conversation
     }
 
     /** @return list<string> */
-    private function recruitContext(?Project $project): array
+    private function recruitContext(Run $run): array
     {
-        if (! $project) {
-            return ['You are suggesting droids, but no project is selected.'];
-        }
         $crew = [];
-        foreach (Droid::where('project_id', $project->id)->orderBy('unit')->get() as $d) {
-            $crew[] = "- {$d->unit} {$d->name}: {$d->role} on {$d->provider} {$d->model}".($d->instructions ? '. Instructions: '.Str::limit($d->instructions, 200) : '');
+        foreach (Droid::with('project')->orderBy('unit')->get() as $d) {
+            $crew[] = "- {$d->unit} {$d->name}: {$d->role} on {$d->provider} {$d->model}".($d->project ? ", on {$d->project->name}" : '');
         }
-        $labels = $project->tasks()->where('column', '!=', 'done')->get()->flatMap(fn (Task $t) => $t->labels ?? [])->countBy()->sortDesc()->take(10);
+        $projects = [];
+        foreach (Project::orderBy('name')->get() as $p) {
+            $open = $p->tasks()->where('column', '!=', 'done')->get();
+            $labels = $open->flatMap(fn (Task $t) => $t->labels ?? [])->countBy()->sortDesc()->take(6)
+                ->map(fn (int $n, string $l) => "{$l} ({$n})")->implode(', ');
+            $projects[] = "- {$p->name} ({$p->repo}): {$open->count()} open issues".($labels ? ", labels: {$labels}" : '').($p->designFiles()->exists() ? ', has a design' : '');
+        }
+        $proposed = ChatMessage::where('topic', 'recruit')->where('kind', 'candidates')->get()
+            ->flatMap(fn (ChatMessage $m) => array_column($m->payload['items'] ?? [], 'name'))->unique()->implode(', ');
         $models = collect(DroidController::MODELS)->map(fn (array $m, string $p) => "{$p}: ".implode(', ', $m))->implode('; ');
 
-        return [
-            "You are helping the person assemble droids for the project {$project->name} ({$project->repo}).",
+        return array_values(array_filter([
+            'You are the HR droid of this factory: you propose new droids for the person to hire. Droids are not tied to a project when hired; they are given tasks on any project later.',
             '',
-            'Droids already on the project:',
-            ...($crew ?: ['- None yet.']),
+            'The crew today:',
+            ...($crew ?: ['- Nobody yet.']),
             '',
-            'Open issues:',
-            ...$this->taskLines($project->tasks()->where('column', '!=', 'done')->orderBy('number')->limit(30)->get()),
-            $labels->isNotEmpty() ? 'Most common labels: '.$labels->map(fn (int $n, string $l) => "{$l} ({$n})")->implode(', ') : '',
-            $project->designFiles()->exists() ? 'The project has a design from its designer droid.' : 'The project has no design yet.',
+            'Projects:',
+            ...($projects ?: ['- None yet.']),
+            $proposed !== '' ? "\nYou already proposed: {$proposed}. Propose new names, not these again." : null,
             '',
-            'Propose 4 candidate droids that would help most, filling gaps in the crew rather than repeating it. Read the code to ground them: the stack, the tests, what is missing.',
+            'Propose 4 candidate droids that answer the person\'s request. With no specific request, fill the gaps in the crew for the projects above.',
             '- "name": a short, friendly one-word droid name, different from the crew\'s.',
             '- "role": one of '.implode(', ', DroidController::ROLES).'.',
             "- \"provider\" and \"model\": pick from {$models}. Claude fits design, review and careful work; Codex fits scoped implementation.",
             '- "pitch": two sentences in the droid\'s own voice, introducing itself and what it is good at.',
-            '- "why": one sentence on why this project needs it now, grounded in something you saw.',
-            '- "instructions": standing instructions for the droid, three or four short rules specific to this project.',
-        ];
+            '- "why": one sentence on why the person needs it, grounded in their request, the crew or the projects.',
+            '- "instructions": standing instructions for the droid, three or four short rules.',
+        ], fn ($l) => $l !== null));
     }
 
     /** @return list<string> */
@@ -296,6 +301,9 @@ class Conversation
             return;
         }
 
+        if ($run->project && $run->kind !== 'design') {
+            $this->memory->remember($run->project, $run->droid, Memory::facts($data['remember'] ?? null));
+        }
         $this->say($run, 'agent', array_filter([
             'text' => Str::limit($text, 6000),
             'reasoning' => is_string($data['reasoning'] ?? null) ? Str::limit($data['reasoning'], 1000) : null,
@@ -305,7 +313,7 @@ class Conversation
         match ($run->kind) {
             'plan' => $slug && ($items = $this->drafts($data['drafts'] ?? null)) ? $this->say($run, 'drafts', ['project' => $slug, 'items' => $items]) : null,
             'propose' => $slug && ($items = $this->proposals($data['proposals'] ?? null)) ? $this->say($run, 'proposals', ['project' => $slug, 'items' => $items]) : null,
-            'recruit' => $slug && ($items = $this->candidates($data['candidates'] ?? null)) ? $this->say($run, 'candidates', ['project' => $slug, 'items' => $items]) : null,
+            'recruit' => ($items = $this->candidates($data['candidates'] ?? null)) ? $this->say($run, 'candidates', ['items' => $items]) : null,
             'reflect' => $this->say($run, 'retro', [
                 'provider' => $run->droid->provider,
                 'stats' => $this->retroStats($run->droid),
