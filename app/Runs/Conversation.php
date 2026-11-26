@@ -2,6 +2,7 @@
 
 namespace App\Runs;
 
+use App\Http\Controllers\Factory\DroidController;
 use App\Models\ChatMessage;
 use App\Models\Droid;
 use App\Models\Milestone;
@@ -33,6 +34,7 @@ class Conversation
         return match (true) {
             in_array($kind, ['plan', 'propose'], true) && $project !== null => "plan:{$project->slug}",
             $kind === 'design' && $project !== null => "design:{$project->slug}",
+            $kind === 'recruit' && $project !== null => "recruit:{$project->slug}",
             default => $droid->slug,
         };
     }
@@ -40,7 +42,7 @@ class Conversation
     /** The topic as stored on chat messages: null for a droid's own chat. */
     public static function storedTopic(string $topic): ?string
     {
-        return str_starts_with($topic, 'plan:') || str_starts_with($topic, 'design:') ? $topic : null;
+        return preg_match('/^(plan|design|recruit):/', $topic) === 1 ? $topic : null;
     }
 
     public function prompt(Run $run): string
@@ -66,6 +68,7 @@ class Conversation
             'propose' => $this->proposeContext($project),
             'reflect' => $this->reflectContext($droid),
             'design' => $this->designContext($project),
+            'recruit' => $this->recruitContext($project),
             default => $this->chatContext($droid),
         }];
         if (! $design) {
@@ -163,6 +166,40 @@ class Conversation
     }
 
     /** @return list<string> */
+    private function recruitContext(?Project $project): array
+    {
+        if (! $project) {
+            return ['You are suggesting droids, but no project is selected.'];
+        }
+        $crew = [];
+        foreach (Droid::where('project_id', $project->id)->orderBy('unit')->get() as $d) {
+            $crew[] = "- {$d->unit} {$d->name}: {$d->role} on {$d->provider} {$d->model}".($d->instructions ? '. Instructions: '.Str::limit($d->instructions, 200) : '');
+        }
+        $labels = $project->tasks()->where('column', '!=', 'done')->get()->flatMap(fn (Task $t) => $t->labels ?? [])->countBy()->sortDesc()->take(10);
+        $models = collect(DroidController::MODELS)->map(fn (array $m, string $p) => "{$p}: ".implode(', ', $m))->implode('; ');
+
+        return [
+            "You are helping the person assemble droids for the project {$project->name} ({$project->repo}).",
+            '',
+            'Droids already on the project:',
+            ...($crew ?: ['- None yet.']),
+            '',
+            'Open issues:',
+            ...$this->taskLines($project->tasks()->where('column', '!=', 'done')->orderBy('number')->limit(30)->get()),
+            $labels->isNotEmpty() ? 'Most common labels: '.$labels->map(fn (int $n, string $l) => "{$l} ({$n})")->implode(', ') : '',
+            $project->designFiles()->exists() ? 'The project has a design from its designer droid.' : 'The project has no design yet.',
+            '',
+            'Propose 4 candidate droids that would help most, filling gaps in the crew rather than repeating it. Read the code to ground them: the stack, the tests, what is missing.',
+            '- "name": a short, friendly one-word droid name, different from the crew\'s.',
+            '- "role": one of '.implode(', ', DroidController::ROLES).'.',
+            "- \"provider\" and \"model\": pick from {$models}. Claude fits design, review and careful work; Codex fits scoped implementation.",
+            '- "pitch": two sentences in the droid\'s own voice, introducing itself and what it is good at.',
+            '- "why": one sentence on why this project needs it now, grounded in something you saw.',
+            '- "instructions": standing instructions for the droid, three or four short rules specific to this project.',
+        ];
+    }
+
+    /** @return list<string> */
     private function designContext(?Project $project): array
     {
         if (! $project) {
@@ -214,6 +251,7 @@ class Conversation
             'plan' => '{"message": "...", "reasoning": "...", "drafts": [{"title": "...", "body": "...", "labels": ["..."], "engine": "claude" or "codex", "size": "S" or "M" or "L"}]}',
             'propose' => '{"message": "...", "reasoning": "...", "proposals": [{"kind": "feature" or "milestone", "title": "...", "why": "...", "effort": "...", "engine": "claude" or "codex"}]}',
             'reflect' => '{"message": "...", "reasoning": "...", "good": ["..."], "improve": ["..."], "rules": ["..."]}',
+            'recruit' => '{"message": "...", "reasoning": "...", "candidates": [{"name": "...", "role": "...", "provider": "claude" or "codex", "model": "...", "pitch": "...", "why": "...", "instructions": "..."}]}',
             default => '{"message": "...", "reasoning": "..."}',
         };
     }
@@ -267,6 +305,7 @@ class Conversation
         match ($run->kind) {
             'plan' => $slug && ($items = $this->drafts($data['drafts'] ?? null)) ? $this->say($run, 'drafts', ['project' => $slug, 'items' => $items]) : null,
             'propose' => $slug && ($items = $this->proposals($data['proposals'] ?? null)) ? $this->say($run, 'proposals', ['project' => $slug, 'items' => $items]) : null,
+            'recruit' => $slug && ($items = $this->candidates($data['candidates'] ?? null)) ? $this->say($run, 'candidates', ['project' => $slug, 'items' => $items]) : null,
             'reflect' => $this->say($run, 'retro', [
                 'provider' => $run->droid->provider,
                 'stats' => $this->retroStats($run->droid),
@@ -350,6 +389,30 @@ class Conversation
                 'why' => is_string($p['why'] ?? null) ? Str::limit($p['why'], 500) : '',
                 'effort' => is_string($p['effort'] ?? null) ? Str::limit($p['effort'], 40, '') : '',
                 'engine' => ($p['engine'] ?? '') === 'codex' ? 'codex' : 'claude',
+            ];
+        }
+
+        return $out;
+    }
+
+    /** @return list<array{name: string, role: string, provider: string, model: string, pitch: string, why: string, instructions: string}> */
+    private function candidates(mixed $list): array
+    {
+        $out = [];
+        foreach (is_array($list) ? array_slice($list, 0, 6) : [] as $c) {
+            if (! is_array($c) || ! is_string($c['name'] ?? null) || trim($c['name']) === '') {
+                continue;
+            }
+            $provider = ($c['provider'] ?? '') === 'codex' ? 'codex' : 'claude';
+            $models = DroidController::MODELS[$provider];
+            $out[] = [
+                'name' => Str::limit(trim($c['name']), 20, ''),
+                'role' => in_array($c['role'] ?? null, DroidController::ROLES, true) ? $c['role'] : 'Builder',
+                'provider' => $provider,
+                'model' => in_array($c['model'] ?? null, $models, true) ? $c['model'] : $models[0],
+                'pitch' => is_string($c['pitch'] ?? null) ? Str::limit(trim($c['pitch']), 400) : '',
+                'why' => is_string($c['why'] ?? null) ? Str::limit(trim($c['why']), 300) : '',
+                'instructions' => is_string($c['instructions'] ?? null) ? Str::limit(trim($c['instructions']), 2000) : '',
             ];
         }
 

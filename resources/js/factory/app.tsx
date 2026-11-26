@@ -801,6 +801,7 @@ export default function FactoryApp({
                     }}
                 />
                 <AssembleDialog
+                    store={store}
                     defaultRole={assembleRole}
                     open={assembleOpen}
                     onOpenChange={setAssembleOpen}

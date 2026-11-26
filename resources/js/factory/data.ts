@@ -80,6 +80,11 @@ type ChatItemBody =
           items?: Proposal[];
       }
     | {
+          kind: 'candidates';
+          project: string;
+          items: Candidate[];
+      }
+    | {
           kind: 'design';
           project: string;
           changed: string[];
@@ -87,7 +92,7 @@ type ChatItemBody =
       };
 /** A question a droid is answering on a worker, keyed by conversation. */
 export type Ask = {
-    kind: 'chat' | 'plan' | 'propose' | 'reflect' | 'design';
+    kind: 'chat' | 'plan' | 'propose' | 'reflect' | 'design' | 'recruit';
     status: 'queued' | 'running';
 };
 
@@ -245,6 +250,19 @@ export type Milestone = {
     state: 'done' | 'active' | 'planned';
     goal: string;
     features: Feature[];
+};
+
+/** A droid the planner suggests assembling for a project. */
+export type Candidate = {
+    name: string;
+    role: string;
+    provider: Provider;
+    model: string;
+    /** Two sentences in the droid's own voice. */
+    pitch: string;
+    /** Why the project needs it now. */
+    why: string;
+    instructions: string;
 };
 
 export type Proposal = {
