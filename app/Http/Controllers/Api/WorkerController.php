@@ -55,7 +55,7 @@ class WorkerController extends Controller
         $data = $request->validate([
             'status' => ['required', Rule::in(['succeeded', 'failed', 'limited'])],
             'pushed' => ['boolean'],
-            'summary' => ['nullable', 'string', 'max:20000'],
+            'summary' => ['nullable', 'string', 'max:60000'],
             'error' => ['nullable', 'string', 'max:5000'],
             'cost' => ['nullable', 'numeric', 'min:0'],
             'tokens_in' => ['nullable', 'integer', 'min:0'],

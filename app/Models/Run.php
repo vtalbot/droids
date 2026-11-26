@@ -9,10 +9,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * @property int $id
  * @property int $droid_id
- * @property int $task_id
+ * @property int|null $task_id
+ * @property int|null $project_id
  * @property int|null $subscription_id
  * @property int|null $worker_id
  * @property string $kind
+ * @property string|null $topic
+ * @property string|null $input
  * @property string $status
  * @property string|null $branch
  * @property int|null $pr_number
@@ -27,13 +30,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property CarbonInterface|null $heartbeat_at
  * @property CarbonInterface|null $finished_at
  * @property-read Droid $droid
- * @property-read Task $task
+ * @property-read Task|null $task
+ * @property-read Project|null $project
  * @property-read Subscription|null $subscription
  * @property-read Worker|null $worker
  */
 class Run extends Model
 {
     public const ACTIVE = ['queued', 'running'];
+
+    /** Runs that answer in a conversation instead of building a task. */
+    public const ASK_KINDS = ['chat', 'plan', 'propose', 'reflect'];
 
     /** Keep the stored log to its last 64 KB. */
     public const LOG_LIMIT = 65536;
@@ -60,6 +67,17 @@ class Run extends Model
     public function task(): BelongsTo
     {
         return $this->belongsTo(Task::class);
+    }
+
+    /** @return BelongsTo<Project, $this> */
+    public function project(): BelongsTo
+    {
+        return $this->belongsTo(Project::class);
+    }
+
+    public function isBuild(): bool
+    {
+        return $this->kind === 'build';
     }
 
     /** @return BelongsTo<Subscription, $this> */

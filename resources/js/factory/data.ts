@@ -42,7 +42,9 @@ export type Issue = {
     reviewer?: string;
     engine?: Provider;
 };
-export type ChatItem =
+/** A chat item as stored on the server; `id` is missing on items not saved yet. */
+export type ChatItem = { id?: number } & ChatItemBody;
+type ChatItemBody =
     | { kind: 'user'; text: string }
     | { kind: 'agent'; text: string; reasoning?: string }
     | {
@@ -56,9 +58,32 @@ export type ChatItem =
       }
     | { kind: 'task'; title: string; items: string[] }
     | { kind: 'plan'; title: string; description: string; steps: string[] }
-    | { kind: 'retro'; provider: Provider; applied?: boolean }
-    | { kind: 'drafts'; project: string; created?: number[] }
-    | { kind: 'proposals'; project: string; added?: string[] };
+    | {
+          kind: 'retro';
+          provider: Provider;
+          applied?: boolean;
+          stats?: [string, string][];
+          good?: string[];
+          improve?: string[];
+          rules?: string[];
+      }
+    | {
+          kind: 'drafts';
+          project: string;
+          created?: number[];
+          items?: Draft[];
+      }
+    | {
+          kind: 'proposals';
+          project: string;
+          added?: string[];
+          items?: Proposal[];
+      };
+/** A question a droid is answering on a worker, keyed by conversation. */
+export type Ask = {
+    kind: 'chat' | 'plan' | 'propose' | 'reflect';
+    status: 'queued' | 'running';
+};
 
 export const PROVIDERS: Record<
     Provider,
@@ -164,6 +189,7 @@ export type PR = {
 
 export type Draft = {
     title: string;
+    body?: string;
     labels: string[];
     engine: Provider;
     size: string;

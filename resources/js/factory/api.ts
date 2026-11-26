@@ -55,13 +55,13 @@ export async function request(
 }
 
 /**
- * Copy the server's store into the live client store. Chats stay client-side
- * until the droid runners exist, so local transcripts are kept.
+ * Copy the server's store into the live client store. A conversation the
+ * server doesn't know yet (only the droid's greeting so far) stays as it is.
  */
 export function applyServerStore(target: Store, next: Store) {
     const chats = target.chats;
     Object.assign(target, next);
-    target.chats = { ...next.chats, ...chats };
+    target.chats = { ...chats, ...next.chats };
 }
 
 export const SaveContext = createContext<Save>(async () => null);

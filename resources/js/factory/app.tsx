@@ -80,6 +80,7 @@ import {
     COLS,
     PROVIDERS,
     STATUS,
+    type Ask,
     type ChatItem,
     type CloudApp,
     type ColKey,
@@ -129,6 +130,7 @@ export type Store = {
     stats: Record<string, Stats>;
     github?: { configured: boolean };
     runs?: Record<string, Run>;
+    asks?: Record<string, Ask>;
     workers?: { total: number; online: number };
 };
 export type Run = {
@@ -245,6 +247,7 @@ export default function FactoryApp({
     // While droids run on a worker, pull their progress from the server.
     useEffect(() => {
         const live = () =>
+            Object.keys(store.asks ?? {}).length > 0 ||
             Object.values(store.runs ?? {}).some(
                 (r) => r.status === 'queued' || r.status === 'running',
             );
@@ -258,7 +261,7 @@ export default function FactoryApp({
                 .catch(() => {
                     /* offline: try again on the next tick */
                 });
-        }, 8000);
+        }, 4000);
         return () => clearInterval(t);
     }, [store]);
 

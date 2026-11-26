@@ -24,13 +24,14 @@ class TaskController extends Controller
             'tasks.*.labels' => ['sometimes', 'array', 'max:10'],
             'tasks.*.labels.*' => ['string', 'max:40'],
             'tasks.*.engine' => ['sometimes', 'nullable', Rule::in(['claude', 'codex'])],
+            'tasks.*.body' => ['sometimes', 'nullable', 'string', 'max:10000'],
             'tasks.*.feature' => ['sometimes', 'nullable', 'integer'],
         ]);
 
         if ($project->isLinked()) {
             $numbers = $this->github(fn () => array_map(function (array $t) use ($project, $writer) {
                 $feature = isset($t['feature']) ? $this->feature($project, (int) $t['feature']) : null;
-                $task = $writer->createIssue($project, $t['title'], $t['labels'] ?? [], $feature?->milestone);
+                $task = $writer->createIssue($project, $t['title'], $t['labels'] ?? [], $feature?->milestone, $t['body'] ?? null);
                 $task->update(['engine' => $t['engine'] ?? null, 'feature_id' => $feature->id ?? $task->feature_id]);
 
                 return $task->number;

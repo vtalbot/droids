@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  *
  * @property int $id
  * @property int $droid_id
+ * @property string|null $topic
  * @property string $kind
  * @property array<string, mixed> $payload
  */

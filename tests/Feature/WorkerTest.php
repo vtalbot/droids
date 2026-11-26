@@ -143,6 +143,31 @@ SH);
             && str_contains((string) $r['error'], 'not logged in'));
     }
 
+    public function test_a_conversation_runs_read_only_and_pushes_nothing(): void
+    {
+        $job = ['kind' => 'plan', 'branch' => null, 'commit_message' => null, 'prompt' => 'Plan dark mode'] + $this->job();
+        Http::fake([
+            'droids.test/api/worker/claim' => Http::response(['run' => $job]),
+            'droids.test/api/worker/runs/5/progress' => Http::response(['cancelled' => false]),
+            'droids.test/api/worker/runs/5/finish' => Http::response(['status' => 'succeeded']),
+        ]);
+        $this->stubCli(<<<SH
+printf '%s\n' "\$@" > {$this->root}/args.txt
+echo "changed" > README.md
+echo '{"type":"result","subtype":"success","is_error":false,"result":"{\\"message\\": \\"Two issues.\\"}","total_cost_usd":0.03,"usage":{}}'
+SH);
+
+        $this->artisan('droids:work --once')->assertSuccessful();
+
+        $args = File::get("{$this->root}/args.txt");
+        $this->assertStringContainsString("--allowedTools\nRead,Grep,Glob,LS", $args);
+        $this->assertStringNotContainsString('--dangerously-skip-permissions', $args);
+        Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/finish') && $r['status'] === 'succeeded' && $r['pushed'] === false
+            && $r['summary'] === '{"message": "Two issues."}');
+        Http::assertNotSent(fn (Request $r) => str_ends_with($r->url(), '/token'));
+        $this->assertStringNotContainsString('droids/', $this->sh(['git', 'branch', '--list'], "{$this->root}/git/vtalbot/droids.git"));
+    }
+
     public function test_codex_events_become_steps_and_a_summary(): void
     {
         $out = new AgentOutput('codex');

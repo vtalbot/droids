@@ -82,7 +82,7 @@ import {
     PromptInputTools,
 } from '@/components/ai-elements/prompt-input';
 import { PROVIDERS, STATUS, type ChatItem, type Droid } from '@/factory/data';
-import { PLAN_DRAFTS, PROPOSALS, RETRO, SUGGEST } from '@/factory/demo';
+import { PLAN_DRAFTS, PROPOSALS, RETRO } from '@/factory/demo';
 import { DroidAvatar } from '@/factory/droid-avatar';
 import { EngineLogo } from '@/factory/logos';
 import { cn } from '@/lib/utils';
@@ -95,66 +95,6 @@ export type ChatTarget = {
     propose?: boolean;
     reflect?: boolean;
 } | null;
-type Act = (d: Droid, s: Store) => string;
-const ACTIONS: Record<string, Act> = {
-    'Merge PR #418': (d, s) => {
-        const i = s.issues.find((x) => x.n === 405)!;
-        if (i.col !== 'done') {
-            i.col = 'done';
-            s.projects[0].done++;
-        }
-        s.prs['store:405'].state = 'merged';
-        Object.assign(d, { status: 'idle', task: null, step: '' });
-        s.feed.unshift({
-            droid: d.id,
-            text: 'Merged PR #418 for #405',
-            min: 0,
-        });
-        toast.success('PR #418 merged', {
-            description: '#405 moved to Done on Storefront v3',
-        });
-        return "Merged **PR #418** and moved #405 to Done. I'm docked and ready for the next review.";
-    },
-    'Send back to CX-12': (d) => {
-        d.status = 'working';
-        d.step = 'Writing review notes for CX-12';
-        return "Sending it back to CX-12 with notes on placeholder sizing. I'll ping you when Codex pushes a fix.";
-    },
-    'Grant read access': (d, s) => {
-        Object.assign(d, {
-            status: 'working',
-            step: 'Reading runner Terraform in droids/infra',
-            progress: 0.35,
-        });
-        s.feed.unshift({
-            droid: d.id,
-            text: 'Unblocked: read access to droids/infra',
-            min: 0,
-        });
-        return 'Thanks, I can see `droids/infra` now. Finishing step 3 of the plan; expect it on #203 within the hour.';
-    },
-    'Plan without it': (d) => {
-        Object.assign(d, {
-            status: 'working',
-            step: 'Drafting plan with infra assumptions',
-        });
-        return "Will do. I'll list my assumptions about the runners at the top of the plan so you can check them.";
-    },
-    'Pinned runs first': (d) => {
-        Object.assign(d, {
-            status: 'working',
-            step: 'Fixing deletion of pinned runs',
-        });
-        return 'Starting with pinned runs, since that one loses data. Old-run retention after.';
-    },
-    'Old runs first': (d) => {
-        Object.assign(d, {
-            status: 'working',
-            step: 'Fixing retention of old runs with open PRs',
-        });
-        return 'Starting with old-run retention. Pinned runs keep being deleted until I get to them.';
-    },
-};
 const REFLECT =
     'Reflect on your last tasks: what went wrong, and how should you work differently?';
 const PROPOSE = 'What should come next? Propose features and milestones.';
@@ -175,18 +115,19 @@ export function ChatSheet({
     const d = store.droids.find((x) => x.id === target?.droid);
     const planFor = target?.plan;
     const key = planFor ? `plan:${planFor}` : (d?.id ?? '');
-    const [status, setStatus] = useState<'ready' | 'submitted'>('ready');
+    const [sending, setSending] = useState(false);
     const [text, setText] = useState('');
     const [model, setModel] = useState(d?.model ?? '');
-    const [usedSugg, setUsedSugg] = useState<Record<string, boolean>>({});
     const save = useSave();
+    const ask = store.asks?.[key];
+    const thinking = sending || !!ask;
     useEffect(() => {
         if (d) setModel(d.model);
-        setStatus('ready');
+        setSending(false);
         setText('');
     }, [key]); // eslint-disable-line
     useEffect(() => {
-        if (!d) return;
+        if (!d || store.asks?.[key]) return;
         const first = target?.reflect
             ? REFLECT
             : target?.propose &&
@@ -195,7 +136,7 @@ export function ChatSheet({
               ? PROPOSE
               : null;
         if (!first) return;
-        const t = setTimeout(() => send(first), 350);
+        const t = setTimeout(() => void send(first), 350);
         return () => clearTimeout(t);
     }, [target]); // eslint-disable-line
 
@@ -218,15 +159,9 @@ export function ChatSheet({
               ];
     }
     const items: ChatItem[] = d ? store.chats[key] : [];
-    const last = items[items.length - 1];
-    const sugg = !d
-        ? []
-        : planFor
-          ? items.length === 1
-              ? [`Plan the rest of ${proj(planFor).milestone}`, PROPOSE]
-              : []
-          : last?.kind === 'agent' && !usedSugg[d.id]
-            ? (SUGGEST[d.id] ?? [])
+    const sugg =
+        d && planFor && items.length === 1 && !thinking
+            ? [`Plan the rest of ${proj(planFor).milestone}`, PROPOSE]
             : [];
     const issue =
         d && !planFor
@@ -234,60 +169,51 @@ export function ChatSheet({
                   (i) => i.n === d.task && i.project === d.project,
               )
             : undefined;
+    const waiting =
+        ask?.status === 'queued'
+            ? store.workers?.online
+                ? 'Waiting for your worker to pick this up…'
+                : 'No worker is online. Start php artisan droids:work to get an answer…'
+            : `${d?.unit} is ${ask?.kind === 'reflect' ? 'reviewing its past tasks' : 'thinking'}…`;
 
-    const send = (msg: string) => {
-        if (!d || !msg.trim()) return;
+    // Every message goes to a worker, which answers with Claude Code or Codex.
+    const send = async (msg: string) => {
+        if (!d || !msg.trim() || thinking) return;
         const t = msg.trim();
-        items.push({ kind: 'user', text: t });
-        if (SUGGEST[d.id]?.includes(t))
-            setUsedSugg((u) => ({ ...u, [d.id]: true }));
+        const kind =
+            t === REFLECT && !planFor
+                ? 'reflect'
+                : planFor
+                  ? t === PROPOSE
+                      ? 'propose'
+                      : 'plan'
+                  : 'chat';
+        const first = items[0];
+        const intro =
+            first && first.id === undefined && first.kind === 'agent'
+                ? first.text
+                : undefined;
         if (model && model !== d.model) {
             d.model = model;
             void save('PATCH', `/factory/droids/${encodeURIComponent(d.id)}`, {
                 model,
             });
         }
+        items.push({ kind: 'user', text: t });
         setText('');
-        setStatus('submitted');
+        setSending(true);
         bump();
-        setTimeout(() => {
-            if (t === REFLECT) {
-                items.push({
-                    kind: 'agent',
-                    reasoning: `Looked back over my last ${RETRO[d.provider].stats[0][1]} tasks: PR timelines, review comments, CI runs on first push, and your replies in chat.`,
-                    text: "Here's my retrospective. The rule changes below would go into my instructions; approve them and I'll follow them from my next task.",
-                });
-                items.push({ kind: 'retro', provider: d.provider });
-            } else if (planFor && t === PROPOSE) {
-                items.push({
-                    kind: 'agent',
-                    reasoning: `Compared ${proj(planFor).repo}'s roadmap with closed issues, support themes linked in issues, PR review comments and production errors from Laravel Cloud logs over the last 30 days.`,
-                    text: "Here's what I'd do next, ranked by impact. Add any of them to the roadmap; features go into the active milestone.",
-                });
-                items.push({ kind: 'proposals', project: planFor });
-            } else if (planFor && !items.some((i) => i.kind === 'drafts')) {
-                items.push({
-                    kind: 'agent',
-                    reasoning: `Read the open issues on ${proj(planFor).board}, the milestone description and the last 2 weeks of merged PRs in ${proj(planFor).repo}. Grouped the remaining work into issues a single droid can finish in under a day.`,
-                    text: "Here's a first cut. I picked **Codex** for scoped implementation and **Claude Code** where the task needs design or careful review. Untick anything you don't want.",
-                });
-                items.push({ kind: 'drafts', project: planFor });
-            } else {
-                const act = ACTIONS[t];
-                items.push({
-                    kind: 'agent',
-                    text: act
-                        ? act(d, store)
-                        : planFor
-                          ? "Got it. I'll fold that into the plan; ask me to redraft when you're ready."
-                          : d.status === 'idle'
-                            ? "Sounds good. Assign me an issue from the board and I'll start on a fresh branch."
-                            : `Noted. I'll fold that into **#${d.task}** and call it out in the PR description.`,
-                });
-            }
-            setStatus('ready');
-            bump();
-        }, 1100);
+        const res = await save(
+            'POST',
+            `/factory/droids/${encodeURIComponent(d.id)}/ask`,
+            { kind, project: planFor, text: t, intro },
+        );
+        if (!res) {
+            items.pop();
+            setText(t);
+        }
+        setSending(false);
+        bump();
     };
 
     return (
@@ -334,8 +260,8 @@ export function ChatSheet({
                                         <Button
                                             variant="outline"
                                             size="sm"
-                                            disabled={status !== 'ready'}
-                                            onClick={() => send(REFLECT)}
+                                            disabled={thinking}
+                                            onClick={() => void send(REFLECT)}
                                         >
                                             <SparklesIcon />
                                             Reflect
@@ -385,8 +311,10 @@ export function ChatSheet({
                                         proj={proj}
                                     />
                                 ))}
-                                {status === 'submitted' && (
-                                    <Shimmer className="text-sm">{`${d.unit} is ${items[items.length - 1]?.kind === 'user' && (items[items.length - 1] as { text: string }).text === REFLECT ? 'reviewing its past tasks' : 'thinking'}…`}</Shimmer>
+                                {thinking && (
+                                    <Shimmer className="text-sm">
+                                        {waiting}
+                                    </Shimmer>
                                 )}
                             </ConversationContent>
                             <ConversationScrollButton />
@@ -398,12 +326,12 @@ export function ChatSheet({
                                         <Suggestion
                                             key={s}
                                             suggestion={s}
-                                            onClick={send}
+                                            onClick={(x) => void send(x)}
                                         />
                                     ))}
                                 </Suggestions>
                             )}
-                            <PromptInput onSubmit={(m) => send(m.text)}>
+                            <PromptInput onSubmit={(m) => void send(m.text)}>
                                 <PromptInputBody>
                                     <PromptInputTextarea
                                         value={text}
@@ -445,10 +373,10 @@ export function ChatSheet({
                                         </PromptInputSelect>
                                     </PromptInputTools>
                                     <PromptInputSubmit
-                                        status={status}
-                                        disabled={
-                                            !text.trim() && status === 'ready'
+                                        status={
+                                            thinking ? 'submitted' : 'ready'
                                         }
+                                        disabled={thinking || !text.trim()}
                                     />
                                 </PromptInputFooter>
                             </PromptInput>
@@ -556,7 +484,24 @@ function ChatRow({
         return <Retro m={m} d={d} bump={bump} store={store} />;
     if (m.kind === 'proposals')
         return <Proposals m={m} store={store} bump={bump} proj={proj} />;
-    return <Drafts m={m} store={store} bump={bump} proj={proj} d={d} />;
+    return <Drafts m={m} bump={bump} proj={proj} d={d} />;
+}
+
+/** Save what the person did with a card, or keep it locally for demo items. */
+function useMark() {
+    const save = useSave();
+    return async (
+        m: ChatItem,
+        patch: { created?: number[]; added?: string[]; applied?: boolean },
+        bump: () => void,
+    ) => {
+        if (m.id === undefined) {
+            Object.assign(m, patch);
+            bump();
+            return;
+        }
+        await save('PATCH', `/factory/chat/${m.id}`, patch);
+    };
 }
 
 function Retro({
@@ -569,13 +514,21 @@ function Retro({
     bump: () => void;
     store: Store;
 }) {
-    const r = RETRO[m.provider];
+    const r = m.good
+        ? {
+              stats: m.stats ?? [],
+              good: m.good,
+              improve: m.improve ?? [],
+              rules: m.rules ?? [],
+          }
+        : RETRO[m.provider];
     const save = useSave();
+    const mark = useMark();
     return (
         <Card className="gap-4 py-4 shadow-none">
             <CardHeader className="px-4">
                 <CardTitle className="text-base">
-                    Retrospective: last {r.stats[0][1]} tasks
+                    Retrospective: last {r.stats[0]?.[1] ?? 0} tasks
                 </CardTitle>
                 <CardDescription>
                     {d.unit} {d.name} · {PROVIDERS[d.provider].label}
@@ -610,21 +563,27 @@ function Retro({
                         ))}
                     </ul>
                 </div>
-                <div>
-                    <div className="mb-1.5 font-medium">
-                        Proposed instruction changes
+                {r.rules.length > 0 && (
+                    <div>
+                        <div className="mb-1.5 font-medium">
+                            Proposed instruction changes
+                        </div>
+                        <div className="grid gap-1 rounded-lg border bg-muted/40 p-2.5 font-mono text-xs">
+                            {r.rules.map((x) => (
+                                <div key={x} className="text-done">
+                                    + {x}
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                    <div className="grid gap-1 rounded-lg border bg-muted/40 p-2.5 font-mono text-xs">
-                        {r.rules.map((x) => (
-                            <div key={x} className="text-done">
-                                + {x}
-                            </div>
-                        ))}
-                    </div>
-                </div>
+                )}
             </CardContent>
             <CardFooter className="gap-2 px-4">
-                {m.applied ? (
+                {r.rules.length === 0 ? (
+                    <span className="text-sm text-muted-foreground">
+                        No instruction changes proposed
+                    </span>
+                ) : m.applied ? (
                     <span className="flex items-center gap-1.5 text-sm text-done">
                         <CheckIcon className="size-4" />
                         Added to {d.unit}'s instructions
@@ -640,7 +599,7 @@ function Retro({
                                     { add_rules: r.rules },
                                 );
                                 if (!res) return;
-                                m.applied = true;
+                                await mark(m, { applied: true }, bump);
                                 toast.success(
                                     `${d.unit} instructions updated`,
                                     {
@@ -673,22 +632,21 @@ function Retro({
 
 function Drafts({
     m,
-    store,
     bump,
     proj,
     d,
 }: {
     m: Extract<ChatItem, { kind: 'drafts' }>;
-    store: Store;
     bump: () => void;
     proj: (id: string) => Store['projects'][number];
     d: Droid;
 }) {
-    const list = PLAN_DRAFTS[m.project] ?? [];
+    const list = m.items ?? PLAN_DRAFTS[m.project] ?? [];
     const [on, setOn] = useState<boolean[]>(() => list.map(() => true));
     const p = proj(m.project);
     const count = on.filter(Boolean).length;
     const save = useSave();
+    const mark = useMark();
     const [busy, setBusy] = useState(false);
     const create = async () => {
         setBusy(true);
@@ -702,21 +660,17 @@ function Drafts({
                         title: t.title,
                         labels: t.labels,
                         engine: t.engine,
+                        body: t.body,
                     })),
             },
         );
         setBusy(false);
         if (!res) return;
         const made = res.numbers as number[];
-        m.created = made;
-        store.chats[`plan:${m.project}`]?.push({
-            kind: 'agent',
-            text: `Created ${made.map((x) => `#${x}`).join(', ')} in the **Backlog** of ${p.name}. Move them to Ready when you want droids to pick them up.`,
-        });
+        await mark(m, { created: made }, bump);
         toast.success(`${made.length} issues added to the Backlog`, {
-            description: `${p.name} · ${d.unit} drafted them`,
+            description: `${p.name} · ${d.unit} drafted them. Move them to Ready when you want droids to pick them up.`,
         });
-        bump();
     };
     return (
         <Card className="gap-3 py-4 shadow-none">
@@ -804,9 +758,10 @@ function Proposals({
     bump: () => void;
     proj: (id: string) => Store['projects'][number];
 }) {
-    const list = PROPOSALS[m.project] ?? [];
+    const list = m.items ?? PROPOSALS[m.project] ?? [];
     const p = proj(m.project);
     const save = useSave();
+    const mark = useMark();
     const add = async (t: string) => {
         const pr = list.find((x) => x.title === t)!;
         const ms = store.roadmap[m.project] ?? [];
@@ -829,8 +784,7 @@ function Proposals({
                       { name: pr.title },
                   );
         if (!res) return;
-        (m.added ??= []).push(t);
-        bump();
+        await mark(m, { added: [...(m.added ?? []), t] }, bump);
         toast.success(
             `${pr.kind === 'milestone' ? 'Milestone' : 'Feature'} added to ${p.name}`,
             { description: pr.title },

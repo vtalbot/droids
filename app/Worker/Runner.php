@@ -48,11 +48,18 @@ class Runner
             File::deleteDirectory($dir);
             File::ensureDirectoryExists(dirname($dir));
 
-            $say("Cloning {$job['repo']}");
-            $this->git(['clone', '--filter=blob:none', $this->remote((string) $job['repo'], (string) $job['clone_token']), $dir], dirname($dir));
-            $this->git(['checkout', '-b', (string) $job['branch']], $dir);
-            $this->git(['config', 'user.name', trim("{$job['droid']['unit']} {$job['droid']['name']}")], $dir);
-            $this->git(['config', 'user.email', 'droids@users.noreply.github.com'], $dir);
+            $build = self::isBuild($job);
+            if (! empty($job['repo'])) {
+                $say("Cloning {$job['repo']}");
+                $this->git(['clone', '--filter=blob:none', ...($build ? [] : ['--depth=1']), $this->remote((string) $job['repo'], (string) $job['clone_token']), $dir], dirname($dir));
+            } else {
+                File::ensureDirectoryExists($dir);
+            }
+            if ($build) {
+                $this->git(['checkout', '-b', (string) $job['branch']], $dir);
+                $this->git(['config', 'user.name', trim("{$job['droid']['unit']} {$job['droid']['name']}")], $dir);
+                $this->git(['config', 'user.email', 'droids@users.noreply.github.com'], $dir);
+            }
 
             $say("Running {$job['provider']} ({$job['model']}) on {$job['subscription']['name']}");
             $exit = $this->agent($job, $dir, $output, $say);
@@ -67,7 +74,7 @@ class Runner
                 return $this->finish($id, ['status' => 'failed', 'error' => $output->error ?: "The {$job['provider']} CLI exited with code {$exit}."], $output);
             }
 
-            $pushed = $this->commitAndPush($job, $dir, $say);
+            $pushed = $build && $this->commitAndPush($job, $dir, $say);
 
             return $this->finish($id, ['status' => 'succeeded', 'pushed' => $pushed], $output);
         } catch (\Throwable $e) {
@@ -154,9 +161,22 @@ class Runner
         $prompt = (string) $job['prompt'];
         $model = (string) $job['model'];
 
+        // Builds change the code; conversations (plan, propose, reflect, chat) may only read it.
+        if (self::isBuild($job)) {
+            return $job['provider'] === 'codex'
+                ? [$bin, 'exec', '--json', '--model', $model, '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check', $prompt]
+                : [$bin, '-p', $prompt, '--model', $model, '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions'];
+        }
+
         return $job['provider'] === 'codex'
-            ? [$bin, 'exec', '--json', '--model', $model, '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check', $prompt]
-            : [$bin, '-p', $prompt, '--model', $model, '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions'];
+            ? [$bin, 'exec', '--json', '--model', $model, '--sandbox', 'read-only', '--skip-git-repo-check', $prompt]
+            : [$bin, '-p', $prompt, '--model', $model, '--output-format', 'stream-json', '--verbose', '--allowedTools', 'Read,Grep,Glob,LS'];
+    }
+
+    /** @param array<string, mixed> $job */
+    private static function isBuild(array $job): bool
+    {
+        return ($job['kind'] ?? 'build') === 'build';
     }
 
     /**

@@ -32,6 +32,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::post('droids', [Factory\DroidController::class, 'store'])->name('droids.store');
         Route::patch('droids/{droid:slug}', [Factory\DroidController::class, 'update'])->name('droids.update');
+        Route::post('droids/{droid:slug}/ask', [Factory\ChatController::class, 'ask'])->name('droids.ask');
+        Route::patch('chat/{message}', [Factory\ChatController::class, 'update'])->name('chat.update');
 
         Route::post('subscriptions', [Factory\SubscriptionController::class, 'store'])->name('subscriptions.store');
         Route::patch('subscriptions/{subscription:slug}', [Factory\SubscriptionController::class, 'update'])->name('subscriptions.update');
