@@ -4,6 +4,7 @@ namespace App\Factory;
 
 use App\Models\Activity;
 use App\Models\ChatMessage;
+use App\Models\CloudConnection;
 use App\Models\Droid;
 use App\Models\GithubApp;
 use App\Models\Milestone;
@@ -75,6 +76,7 @@ class FactoryState
             'stats' => $projects->filter(fn (Project $p) => $p->stats !== null)->mapWithKeys(fn (Project $p) => [$p->slug => $p->stats]),
             'cloud' => $projects->mapWithKeys(fn (Project $p) => [$p->slug => $p->cloud_snapshot]),
             'github' => ['configured' => GithubApp::current() !== null],
+            'cloudConnected' => CloudConnection::current() !== null,
             'runs' => $this->runs($slugs),
             'asks' => Run::whereIn('kind', Run::ASK_KINDS)->whereIn('status', Run::ACTIVE)->get(['topic', 'kind', 'status'])
                 ->mapWithKeys(fn (Run $r) => [(string) $r->topic => ['kind' => $r->kind, 'status' => $r->status]]),

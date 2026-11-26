@@ -227,14 +227,19 @@ export type Stats = {
 // ---------- Laravel Cloud ----------
 export type DeployStatus =
     | 'pending'
+    | 'build.pending'
+    | 'build.created'
     | 'build.queued'
     | 'build.running'
     | 'build.succeeded'
     | 'build.failed'
+    | 'deployment.pending'
+    | 'deployment.created'
     | 'deployment.queued'
     | 'deployment.running'
     | 'deployment.succeeded'
     | 'deployment.failed'
+    | 'failed'
     | 'cancelled';
 export type CloudEnv = {
     id: string;
@@ -246,18 +251,20 @@ export type CloudEnv = {
     php: string;
     octane: boolean;
     hibernation: boolean;
+    pushToDeploy?: boolean;
     region: string;
     instances: {
         name: string;
         type: 'App' | 'Worker';
         size: string;
-        replicas: number;
+        /** Current replicas, CPU and memory: only in the sample data, the Cloud API doesn't report them per instance. */
+        replicas?: number;
         min: number;
         max: number;
         scaling: 'auto' | 'custom' | 'none';
-        cpu: number;
-        mem: number;
-        queue?: string;
+        cpu?: number;
+        mem?: number;
+        queue?: string | null;
     }[];
     probes: {
         kind: 'startup' | 'readiness' | 'liveness';
@@ -290,15 +297,22 @@ export type Deployment = {
     failure?: string;
 };
 export type CloudApp = {
+    /** Set when the snapshot comes from a linked Laravel Cloud application rather than sample data. */
+    linked?: boolean;
+    id?: string;
     app: string;
     org: string;
     region: string;
-    usage: number;
+    repo?: string | null;
+    usage?: number;
     envs: CloudEnv[];
     deployments: Deployment[];
     cpu: number[];
     mem: number[];
+    /** Labels for the cpu and mem points; sample data uses hours of the day. */
+    times?: string[];
     logs: string[];
+    synced?: string;
 };
 
 export const DEPLOY_STEPS: {
@@ -306,12 +320,22 @@ export const DEPLOY_STEPS: {
     label: string;
     from: DeployStatus[];
 }[] = [
-    { key: 'queue', label: 'Queued', from: ['pending', 'build.queued'] },
+    {
+        key: 'queue',
+        label: 'Queued',
+        from: ['pending', 'build.pending', 'build.created', 'build.queued'],
+    },
     { key: 'build', label: 'Build', from: ['build.running'] },
     {
         key: 'deploy',
         label: 'Deploy',
-        from: ['build.succeeded', 'deployment.queued', 'deployment.running'],
+        from: [
+            'build.succeeded',
+            'deployment.pending',
+            'deployment.created',
+            'deployment.queued',
+            'deployment.running',
+        ],
     },
     { key: 'live', label: 'Live', from: ['deployment.succeeded'] },
 ];

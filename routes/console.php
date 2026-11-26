@@ -1,9 +1,13 @@
 <?php
 
+use App\Cloud\CloudSync;
 use App\GitHub\RepositorySync;
+use App\Models\CloudConnection;
 use App\Models\Project;
 use App\Runs\RunQueue;
 use Illuminate\Foundation\Inspiring;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 
@@ -40,3 +44,19 @@ Artisan::command('droids:sweep', function (RunQueue $runs) {
 })->purpose('Fail droid runs whose worker stopped reporting');
 
 Schedule::command('droids:sweep')->everyFiveMinutes();
+
+// Refresh linked Laravel Cloud apps for the Cloud panel.
+Artisan::command('cloud:sync', function (CloudSync $sync) {
+    if (! CloudConnection::current()) {
+        return;
+    }
+    foreach (Project::whereNotNull('cloud_application_id')->get() as $project) {
+        try {
+            $sync->sync($project);
+        } catch (RequestException|ConnectionException $e) {
+            $this->warn("{$project->name}: {$e->getMessage()}");
+        }
+    }
+})->purpose('Refresh Laravel Cloud snapshots for linked projects');
+
+Schedule::command('cloud:sync')->everyFiveMinutes()->withoutOverlapping();

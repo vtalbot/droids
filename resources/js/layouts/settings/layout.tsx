@@ -36,6 +36,11 @@ const sidebarNavItems: NavItem[] = [
         href: '/settings/workers',
         icon: null,
     },
+    {
+        title: 'Laravel Cloud',
+        href: '/settings/cloud',
+        icon: null,
+    },
 ];
 
 export default function SettingsLayout({ children }: PropsWithChildren) {

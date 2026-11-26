@@ -19,6 +19,8 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $synced_at
  * @property array<string, mixed>|null $stats
  * @property array<string, mixed>|null $cloud_snapshot
+ * @property string|null $cloud_application_id
+ * @property Carbon|null $cloud_synced_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -32,6 +34,7 @@ class Project extends Model
             'stats' => 'array',
             'cloud_snapshot' => 'array',
             'synced_at' => 'datetime',
+            'cloud_synced_at' => 'datetime',
         ];
     }
 
