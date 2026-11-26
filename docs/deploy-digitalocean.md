@@ -108,7 +108,7 @@ Clone the app, then install the Node version it asks for. The repo's `.nvmrc` sa
 git clone git@github.com:vtalbot/droids.git /var/www/droids
 cd /var/www/droids
 nvm install
-nvm alias default node
+nvm alias default "lts/*"
 node -v
 ```
 
