@@ -142,12 +142,29 @@ export const STATUS: Record<
     },
 };
 
-export const COLS: { key: ColKey; label: string }[] = [
-    { key: 'backlog', label: 'Backlog' },
-    { key: 'ready', label: 'Ready' },
-    { key: 'progress', label: 'In progress' },
-    { key: 'review', label: 'In review' },
-    { key: 'done', label: 'Done' },
+/** Board columns, named for who acts on a card there. */
+export const COLS: { key: ColKey; label: string; hint: string }[] = [
+    {
+        key: 'backlog',
+        label: 'Ideas',
+        hint: 'Not planned yet. Move a card to Ready for droids when it is clear enough to build.',
+    },
+    {
+        key: 'ready',
+        label: 'Ready for droids',
+        hint: 'Clear enough to build. Pair a builder with it to start.',
+    },
+    {
+        key: 'progress',
+        label: 'Droid building',
+        hint: 'A builder droid is working on it in a branch.',
+    },
+    {
+        key: 'review',
+        label: 'Droid reviewing',
+        hint: 'A pull request is open: a reviewer droid checks it, then you merge.',
+    },
+    { key: 'done', label: 'Shipped', hint: 'Merged or closed.' },
 ];
 
 export type FeedItem = { droid: string; text: string; min: number };

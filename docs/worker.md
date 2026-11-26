@@ -1,6 +1,6 @@
 # Run droids on your computer
 
-Droids don't run on the server. The server keeps the queue, and a **worker** on your own computer picks up each task, runs Claude Code or Codex in a fresh clone of the repository, and pushes a branch. The server then opens the pull request and moves the task to In review.
+Droids don't run on the server. The server keeps the queue, and a **worker** on your own computer picks up each task, runs Claude Code or Codex in a fresh clone of the repository, and pushes a branch. The server then opens the pull request and moves the task to Droid reviewing.
 
 The worker is the same Laravel app, started with `php artisan droids:work`. It uses the Claude and Codex subscriptions you are signed in to on that computer, so no API key ever has to live on the server.
 

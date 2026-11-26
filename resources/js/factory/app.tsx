@@ -1266,9 +1266,12 @@ function IssuePicker({
                                                     {i.title}
                                                 </span>
                                                 <span className="ml-auto text-xs text-muted-foreground">
-                                                    {i.col === 'ready'
-                                                        ? 'Ready'
-                                                        : 'Backlog'}
+                                                    {
+                                                        COLS.find(
+                                                            (c) =>
+                                                                c.key === i.col,
+                                                        )?.label
+                                                    }
                                                 </span>
                                             </CommandItem>
                                         ))}
@@ -1506,7 +1509,10 @@ function Board({
                                 over === c.key && 'border-ring bg-accent',
                             )}
                         >
-                            <div className="flex items-center gap-2 px-1.5 py-1 text-sm font-medium">
+                            <div
+                                className="flex items-center gap-2 px-1.5 py-1 text-sm font-medium"
+                                title={c.hint}
+                            >
                                 {c.label}
                                 <span className="text-muted-foreground">
                                     {items.length}
@@ -1690,13 +1696,13 @@ function Chip({
                         seed={d.seed}
                         className="size-5"
                     />
-                    <span className="font-mono">{d.unit}</span>
+                    <span className="font-medium">{d.name}</span>
                     <span className="text-muted-foreground">{label}</span>
                 </button>
             </TooltipTrigger>
             <TooltipContent>
-                {d.name} · {PROVIDERS[d.provider].label} {d.model}. Click to
-                chat.
+                {d.unit} {d.name}, {d.role.toLowerCase()} on{' '}
+                {PROVIDERS[d.provider].label} {d.model}. Click to chat.
             </TooltipContent>
         </Tooltip>
     );

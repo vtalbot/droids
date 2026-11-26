@@ -386,7 +386,7 @@ class RunQueue
 
         $fix = $this->queueFix($task, $run, $verdict['feedback']);
         Activity::create(['droid_id' => $droid->id, 'text' => $fix
-            ? "Asked for changes on PR #{$run->pr_number}, sent back to {$task->builder?->unit}"
+            ? "Asked for changes on PR #{$run->pr_number}, sent back to {$task->builder?->name}"
             : "Asked for changes on PR #{$run->pr_number} for #{$task->number}: it needs you"]);
     }
 
