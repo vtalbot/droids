@@ -27,6 +27,8 @@ composer dev            # app, queue, logs and Vite
 
 Sign-up is open only until the first account exists. Set `DROIDS_OPEN_REGISTRATION=true` to let more people register.
 
+To run it on a server and connect the GitHub App, follow [docs/deploy-digitalocean.md](docs/deploy-digitalocean.md).
+
 ## Roadmap
 
 1. Scaffold and UI shell: every screen renders from the database, seeded with sample data.
