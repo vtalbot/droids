@@ -2,6 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Models\Droid;
+use App\Models\Project;
+use App\Models\PullRequest;
+use App\Models\Run;
 use App\Models\User;
 use Database\Seeders\FactoryDemoSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -83,5 +87,26 @@ class FactoryTest extends TestCase
         $this->assertDatabaseCount('projects', 4);
         $this->assertDatabaseCount('droids', 11);
         $this->assertDatabaseCount('activities', 8);
+    }
+
+    public function test_projects_without_stored_stats_get_them_from_their_history(): void
+    {
+        $this->travelTo(now()->startOfWeek()->addDays(2)->setTime(12, 0));
+        $project = Project::create(['slug' => 'fresh', 'name' => 'Fresh', 'repo' => 'vtalbot/fresh', 'board' => 'Roadmap', 'color' => 'teal']);
+        $codex = Droid::create(['slug' => 'cx01', 'unit' => 'CX-01', 'name' => 'Bolt', 'provider' => 'codex', 'model' => 'GPT-5.1-Codex', 'role' => 'Builder']);
+        $done = $project->tasks()->create(['number' => 1, 'title' => 'Done', 'column' => 'done', 'position' => 1, 'builder_id' => $codex->id]);
+        $project->tasks()->create(['number' => 2, 'title' => 'Open', 'column' => 'ready', 'position' => 2]);
+        $pr = PullRequest::create(['task_id' => $done->id, 'number' => 5, 'title' => 'Done', 'branch' => 'b', 'state' => 'merged', 'checks' => [['name' => 'ci', 'state' => 'success']]]);
+        $pr->forceFill(['created_at' => now()->subHours(6)])->save();
+        Run::create(['droid_id' => $codex->id, 'task_id' => $done->id, 'kind' => 'build', 'status' => 'succeeded', 'cost' => 1.25]);
+
+        $stats = $this->actingAs(User::factory()->create())->getJson('/factory/state')->assertOk()->json('store.stats.fresh');
+
+        $this->assertCount(8, $stats['weeks']);
+        $this->assertSame(['scope' => 2, 'done' => 1], end($stats['burn']));
+        $this->assertSame(['claude' => 0, 'codex' => 1], end($stats['thru']));
+        $this->assertEquals(6, end($stats['cycle']));
+        $this->assertEquals(['claude' => 0, 'codex' => 1.25], end($stats['spend']));
+        $this->assertEquals(1, $stats['ci']);
     }
 }
