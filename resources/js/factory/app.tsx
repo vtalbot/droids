@@ -746,7 +746,9 @@ export default function FactoryApp({
                     onOpenChange={setAssembleOpen}
                     projects={store.projects}
                     defaultProject={
-                        project === 'all' ? store.projects[0].id : project
+                        project === 'all'
+                            ? (store.projects[0]?.id ?? '')
+                            : project
                     }
                     onCreate={async (d) => {
                         const res = await save('POST', '/factory/droids', d);
@@ -1386,6 +1388,7 @@ function Board({
                     <div className="flex flex-wrap items-end gap-3">
                         <Button
                             variant="outline"
+                            disabled={!p && !store.projects.length}
                             onClick={() =>
                                 planWith(p ? p.id : store.projects[0].id)
                             }
