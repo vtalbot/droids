@@ -1,6 +1,6 @@
 # Run droids on your computer
 
-Droids don't run on the server. The server keeps the queue, and a **worker** on your own computer picks up each task, runs Claude Code or Codex in a fresh clone of the repository, and pushes a branch. The server then opens the pull request and moves the task to In review.
+Droids don't run on the server. The server keeps the queue, and a **worker** on your own computer picks up each task, runs Claude Code or Codex in a fresh clone of the repository, and pushes a branch. The server then opens the pull request and moves the task to Droid reviewing.
 
 The worker is the same Laravel app, started with `php artisan droids:work`. It uses the Claude and Codex subscriptions you are signed in to on that computer, so no API key ever has to live on the server.
 
@@ -72,6 +72,18 @@ Leave it running in a terminal tab, or keep it alive with something like `tmux`.
 Put a reviewer on a task and it reviews the pull request as soon as one is open: right away if the builder already opened it, otherwise when the builder's run finishes. The review runs read-only on the pull request's branch (Claude Code can also run `git diff`, `git log` and `git show`) and is posted on GitHub as a comment from the App, with inline notes. GitHub doesn't let the App approve or block a pull request it opened itself, so the verdict ("Looks good to merge" or "Changes requested") is in the comment and on the board.
 
 When the reviewer asks for changes, the builder gets a fix run on the same branch with the review notes. Its commit lands on the open pull request, and the reviewer looks again. After two rounds of fixes, the task waits for you.
+
+## Designer droids
+
+Assemble a droid with the **Designer** role, then open a project's **Design** tab and press **Ask a designer**. The designer works on your worker in a clone of the repository. It reads the code to learn the product, then writes the project's design into `.droids/design/`:
+
+- `system.md`: the design system, covering principles, color, type, spacing and components with their states.
+- `tokens.css`: the tokens as CSS custom properties.
+- `screens/<name>.html`: one self-contained HTML mockup per screen.
+
+It can only write inside that folder: Claude Code gets its read tools plus Edit and Write limited to it, and Codex runs in its workspace-write sandbox. When it finishes, the worker sends the folder back. Droids saves it on the project, and you can preview each file in the Design tab. Ask again to change it: the designer starts from the files already there.
+
+Every other run on the project gets the same files in `.droids/design/` in its clone. Builders, reviewers and planners are told to follow them. The folder is listed in the clone's `.git/info/exclude`, so a build never commits it.
 
 ## How a run picks a subscription
 

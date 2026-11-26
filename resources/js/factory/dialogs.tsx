@@ -58,6 +58,7 @@ export function AssembleDialog({
     onCreate,
     nextSeed,
     nextUnit,
+    defaultRole = 'Builder',
 }: {
     open: boolean;
     onOpenChange: (o: boolean) => void;
@@ -66,6 +67,7 @@ export function AssembleDialog({
     onCreate: (d: NewDroid) => Promise<boolean>;
     nextSeed: number;
     nextUnit: (p: Provider) => string;
+    defaultRole?: string;
 }) {
     const [provider, setProvider] = useState<Provider>('claude');
     const [model, setModel] = useState('Sonnet 5.5');
@@ -83,6 +85,14 @@ export function AssembleDialog({
             setProject(defaultProject);
             setSeed(nextSeed);
             setName(NAMES[nextSeed % NAMES.length]);
+            setRole(defaultRole);
+            if (defaultRole === 'Designer') {
+                setProvider('claude');
+                setModel('Opus 5.5');
+                setInstructions(
+                    'Start from what the product already looks like. Keep the system small: a few colors, one type scale, the components the screens need.',
+                );
+            }
         }
     }, [open]); // eslint-disable-line
     const unit = nextUnit(provider);

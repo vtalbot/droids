@@ -36,6 +36,7 @@ class RunQueue
         private Prompt $prompt,
         private Conversation $conversation,
         private Review $review,
+        private Design $design,
     ) {}
 
     public function queue(Droid $droid, Task $task): Run
@@ -214,6 +215,8 @@ class RunQueue
                 default => null,
             },
             'droid' => ['name' => $run->droid->name, 'unit' => $run->droid->unit],
+            // Reflect has no project; everything else works next to the project's design.
+            'design' => $this->design->files($project),
         ];
     }
 
@@ -263,7 +266,7 @@ class RunQueue
     }
 
     /**
-     * @param  array{status: string, summary?: string|null, error?: string|null, pushed?: bool, cost?: float|int|null, tokens_in?: int|null, tokens_out?: int|null, limited_until?: string|null, log?: string|null}  $result
+     * @param  array{status: string, summary?: string|null, error?: string|null, pushed?: bool, cost?: float|int|null, tokens_in?: int|null, tokens_out?: int|null, limited_until?: string|null, log?: string|null, design?: list<array{path: string, content: string}>|null}  $result
      */
     public function finish(Run $run, array $result): Run
     {
@@ -284,7 +287,7 @@ class RunQueue
 
             match ($result['status']) {
                 'limited' => $this->limited($run, $result['limited_until'] ?? null, $result['error'] ?? null),
-                'succeeded' => $this->succeeded($run, (bool) ($result['pushed'] ?? false)),
+                'succeeded' => $this->succeeded($run, (bool) ($result['pushed'] ?? false), $result['design'] ?? null),
                 default => $this->failed($run, $result['error'] ?? 'The run failed.'),
             };
 
@@ -315,11 +318,18 @@ class RunQueue
         $run->droid->fill(['status' => 'working', 'step' => "{$run->subscription?->name} hit its limit, waiting for another subscription", 'progress' => 0]);
     }
 
-    private function succeeded(Run $run, bool $pushed): void
+    /** @param list<array{path: string, content: string}>|null $design the design folder a designer run sent back */
+    private function succeeded(Run $run, bool $pushed, ?array $design = null): void
     {
         $run->fill(['status' => 'succeeded', 'finished_at' => now()]);
         if ($run->isConversation()) {
-            $this->conversation->answer($run);
+            $saved = $run->kind === 'design' && $run->project && $design !== null
+                ? $this->design->save($run, $run->project, $design)
+                : null;
+            if ($saved && ($saved['changed'] !== [] || $saved['removed'] !== [])) {
+                Activity::create(['droid_id' => $run->droid_id, 'text' => 'Updated the design for '.$run->project->name.': '.implode(', ', [...$saved['changed'], ...$saved['removed']])]);
+            }
+            $this->conversation->answer($run, $saved);
 
             return;
         }
@@ -376,7 +386,7 @@ class RunQueue
 
         $fix = $this->queueFix($task, $run, $verdict['feedback']);
         Activity::create(['droid_id' => $droid->id, 'text' => $fix
-            ? "Asked for changes on PR #{$run->pr_number}, sent back to {$task->builder?->unit}"
+            ? "Asked for changes on PR #{$run->pr_number}, sent back to {$task->builder?->name}"
             : "Asked for changes on PR #{$run->pr_number} for #{$task->number}: it needs you"]);
     }
 

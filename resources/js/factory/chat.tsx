@@ -3,6 +3,7 @@ import {
     CheckIcon,
     ListChecksIcon,
     NotebookPenIcon,
+    PaletteIcon,
     SparklesIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -92,6 +93,8 @@ import type { Store } from '@/factory/app';
 export type ChatTarget = {
     droid: string;
     plan?: string;
+    /** A design session for this project's design system and screens. */
+    design?: string;
     propose?: boolean;
     reflect?: boolean;
 } | null;
@@ -114,7 +117,12 @@ export function ChatSheet({
 }) {
     const d = store.droids.find((x) => x.id === target?.droid);
     const planFor = target?.plan;
-    const key = planFor ? `plan:${planFor}` : (d?.id ?? '');
+    const designFor = target?.design;
+    const key = planFor
+        ? `plan:${planFor}`
+        : designFor
+          ? `design:${designFor}`
+          : (d?.id ?? '');
     const [sending, setSending] = useState(false);
     const [text, setText] = useState('');
     const [model, setModel] = useState(d?.model ?? '');
@@ -141,30 +149,49 @@ export function ChatSheet({
     }, [target]); // eslint-disable-line
 
     if (d && !store.chats[key]) {
-        store.chats[key] = planFor
+        const designed = designFor
+            ? (store.design?.[designFor]?.length ?? 0) > 0
+            : false;
+        store.chats[key] = designFor
             ? [
                   {
                       kind: 'agent',
-                      text: `Let's plan **${proj(planFor).name}**. The current milestone is *${proj(planFor).milestone}* (${proj(planFor).done} of ${proj(planFor).total} closed, due ${proj(planFor).due}). Tell me what you want to ship and I'll draft issues for the **${proj(planFor).board}** board, with the engine I'd give each one.`,
+                      text: designed
+                          ? `I'm the designer for **${proj(designFor).name}**. Its design is in the Design tab. Tell me what to change, or which screen to design next.`
+                          : `I'm the designer for **${proj(designFor).name}**. I'll read \`${proj(designFor).repo}\` and write a design system and screen mockups that every droid on the project will follow. What should it feel like, and which screens matter most?`,
                   },
               ]
-            : [
-                  {
-                      kind: 'agent',
-                      text:
-                          d.status === 'idle'
-                              ? `${d.unit} online and docked. Give me an issue from **${proj(d.project).board}**, or ask me anything about \`${proj(d.project).repo}\`.`
-                              : `Working on **#${d.task}**. Current step: ${d.step}.`,
-                  },
-              ];
+            : planFor
+              ? [
+                    {
+                        kind: 'agent',
+                        text: `Let's plan **${proj(planFor).name}**. The current milestone is *${proj(planFor).milestone}* (${proj(planFor).done} of ${proj(planFor).total} closed, due ${proj(planFor).due}). Tell me what you want to ship and I'll draft issues for the **${proj(planFor).board}** board, with the engine I'd give each one.`,
+                    },
+                ]
+              : [
+                    {
+                        kind: 'agent',
+                        text:
+                            d.status === 'idle'
+                                ? `${d.unit} online and docked. Give me an issue from **${proj(d.project).board}**, or ask me anything about \`${proj(d.project).repo}\`.`
+                                : `Working on **#${d.task}**. Current step: ${d.step}.`,
+                    },
+                ];
     }
     const items: ChatItem[] = d ? store.chats[key] : [];
     const sugg =
-        d && planFor && items.length === 1 && !thinking
-            ? [`Plan the rest of ${proj(planFor).milestone}`, PROPOSE]
+        d && items.length === 1 && !thinking
+            ? planFor
+                ? [`Plan the rest of ${proj(planFor).milestone}`, PROPOSE]
+                : designFor
+                  ? [
+                        `Create a design system for ${proj(designFor).name}`,
+                        'Design the main screens',
+                    ]
+                  : []
             : [];
     const issue =
-        d && !planFor
+        d && !planFor && !designFor
             ? store.issues.find(
                   (i) => i.n === d.task && i.project === d.project,
               )
@@ -174,20 +201,21 @@ export function ChatSheet({
             ? store.workers?.online
                 ? 'Waiting for your worker to pick this up…'
                 : 'No worker is online. Start php artisan droids:work to get an answer…'
-            : `${d?.unit} is ${ask?.kind === 'reflect' ? 'reviewing its past tasks' : 'thinking'}…`;
+            : `${d?.unit} is ${ask?.kind === 'reflect' ? 'reviewing its past tasks' : ask?.kind === 'design' ? 'designing' : 'thinking'}…`;
 
     // Every message goes to a worker, which answers with Claude Code or Codex.
     const send = async (msg: string) => {
         if (!d || !msg.trim() || thinking) return;
         const t = msg.trim();
-        const kind =
-            t === REFLECT && !planFor
-                ? 'reflect'
-                : planFor
-                  ? t === PROPOSE
-                      ? 'propose'
-                      : 'plan'
-                  : 'chat';
+        const kind = designFor
+            ? 'design'
+            : t === REFLECT && !planFor
+              ? 'reflect'
+              : planFor
+                ? t === PROPOSE
+                    ? 'propose'
+                    : 'plan'
+                : 'chat';
         const first = items[0];
         const intro =
             first && first.id === undefined && first.kind === 'agent'
@@ -206,7 +234,7 @@ export function ChatSheet({
         const res = await save(
             'POST',
             `/factory/droids/${encodeURIComponent(d.id)}/ask`,
-            { kind, project: planFor, text: t, intro },
+            { kind, project: planFor ?? designFor, text: t, intro },
         );
         if (!res) {
             items.pop();
@@ -254,7 +282,7 @@ export function ChatSheet({
                                     </Badge>
                                 </SheetDescription>
                             </div>
-                            {!planFor && (
+                            {!planFor && !designFor && (
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <Button
@@ -275,7 +303,18 @@ export function ChatSheet({
                             )}
                         </SheetHeader>
                         <div className="flex items-center gap-2 border-b px-4 py-2.5 text-sm text-muted-foreground">
-                            {planFor ? (
+                            {designFor ? (
+                                <>
+                                    <PaletteIcon className="size-4" />
+                                    <span>
+                                        Design session for{' '}
+                                        <span className="text-foreground">
+                                            {proj(designFor).name}
+                                        </span>{' '}
+                                        · files go to its Design tab
+                                    </span>
+                                </>
+                            ) : planFor ? (
                                 <>
                                     <NotebookPenIcon className="size-4" />
                                     <span>
@@ -341,7 +380,9 @@ export function ChatSheet({
                                         placeholder={
                                             planFor
                                                 ? `Describe what ${proj(planFor).name} should ship next…`
-                                                : `Message ${d.unit} ${d.name}…`
+                                                : designFor
+                                                  ? `Describe the look, or a screen to design…`
+                                                  : `Message ${d.unit} ${d.name}…`
                                         }
                                     />
                                 </PromptInputBody>
@@ -441,6 +482,26 @@ function ChatRow({
                     )}
                 </ToolContent>
             </Tool>
+        );
+    if (m.kind === 'design')
+        return (
+            <Task defaultOpen>
+                <TaskTrigger
+                    title={`Updated the design of ${proj(m.project).name}: see its Design tab`}
+                />
+                <TaskContent>
+                    {m.changed.map((f) => (
+                        <TaskItem key={f}>
+                            <TaskItemFile>{f}</TaskItemFile>
+                        </TaskItem>
+                    ))}
+                    {m.removed.map((f) => (
+                        <TaskItem key={`-${f}`}>
+                            Removed <TaskItemFile>{f}</TaskItemFile>
+                        </TaskItem>
+                    ))}
+                </TaskContent>
+            </Task>
         );
     if (m.kind === 'task')
         return (

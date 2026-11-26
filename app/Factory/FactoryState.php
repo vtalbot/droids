@@ -5,6 +5,7 @@ namespace App\Factory;
 use App\Models\Activity;
 use App\Models\ChatMessage;
 use App\Models\CloudConnection;
+use App\Models\DesignFile;
 use App\Models\Droid;
 use App\Models\GithubApp;
 use App\Models\Milestone;
@@ -77,6 +78,7 @@ class FactoryState
             'cloud' => $projects->mapWithKeys(fn (Project $p) => [$p->slug => $p->cloud_snapshot]),
             'github' => ['configured' => GithubApp::current() !== null],
             'cloudConnected' => CloudConnection::current() !== null,
+            'design' => $this->design($slugs, $droidSlugs),
             'runs' => $this->runs($slugs),
             'asks' => Run::whereIn('kind', Run::ASK_KINDS)->whereIn('status', Run::ACTIVE)->get(['topic', 'kind', 'status'])
                 ->mapWithKeys(fn (Run $r) => [(string) $r->topic => ['kind' => $r->kind, 'status' => $r->status]]),
@@ -228,6 +230,30 @@ class FactoryState
             'week' => $s->week ?? [],
             'spend' => $s->spend_cap !== null ? ['used' => $s->spend_used ?? 0.0, 'cap' => $s->spend_cap] : null,
         ], fn ($v) => $v !== null);
+    }
+
+    /**
+     * Each project's design files, without their content (the Design tab loads it).
+     *
+     * @param  Collection<int, string>  $slugs
+     * @param  Collection<int, string>  $droidSlugs
+     * @return array<string, list<array{path: string, size: int, by: string|null, updated: string|null}>>
+     */
+    private function design(Collection $slugs, Collection $droidSlugs): array
+    {
+        $out = [];
+        $files = DesignFile::query()->select(['project_id', 'path', 'droid_id', 'updated_at'])
+            ->selectRaw('length(content) as size')->orderBy('path')->get();
+        foreach ($files as $f) {
+            $out[$slugs[$f->project_id]][] = [
+                'path' => $f->path,
+                'size' => (int) $f->getAttribute('size'),
+                'by' => $f->droid_id ? ($droidSlugs[$f->droid_id] ?? null) : null,
+                'updated' => $f->updated_at?->diffForHumans(),
+            ];
+        }
+
+        return $out;
     }
 
     /**

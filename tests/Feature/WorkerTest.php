@@ -168,6 +168,56 @@ SH);
         $this->assertStringNotContainsString('droids/', $this->sh(['git', 'branch', '--list'], "{$this->root}/git/vtalbot/droids.git"));
     }
 
+    public function test_a_designer_writes_the_design_folder_and_sends_it_back(): void
+    {
+        $job = ['kind' => 'design', 'branch' => null, 'commit_message' => null, 'prompt' => 'Design it', 'design' => [
+            ['path' => 'system.md', 'content' => '# Old'],
+            ['path' => 'screens/old.html', 'content' => '<p>old</p>'],
+        ]] + $this->job();
+        Http::fake([
+            'droids.test/api/worker/claim' => Http::response(['run' => $job]),
+            'droids.test/api/worker/runs/5/progress' => Http::response(['cancelled' => false]),
+            'droids.test/api/worker/runs/5/finish' => Http::response(['status' => 'succeeded']),
+        ]);
+        $this->stubCli(<<<SH
+printf '%s\n' "\$@" > {$this->root}/args.txt
+cat .droids/design/system.md > {$this->root}/seen.txt
+echo "# New" > .droids/design/system.md
+rm .droids/design/screens/old.html
+echo "<p>board</p>" > .droids/design/screens/board.html
+echo '{"type":"result","subtype":"success","is_error":false,"result":"{\\"message\\": \\"Done.\\"}","total_cost_usd":0.03,"usage":{}}'
+SH);
+
+        $this->artisan('droids:work --once')->assertSuccessful();
+
+        $this->assertSame('# Old', trim(File::get("{$this->root}/seen.txt")), 'the existing design was in the folder');
+        $this->assertStringContainsString("--allowedTools\nRead,Grep,Glob,LS,Edit(./.droids/design/**),Write(./.droids/design/**)", File::get("{$this->root}/args.txt"));
+        Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/finish') && $r['status'] === 'succeeded' && $r['pushed'] === false
+            && $r['design'] === [['path' => 'screens/board.html', 'content' => "<p>board</p>\n"], ['path' => 'system.md', 'content' => "# New\n"]]);
+    }
+
+    public function test_a_build_reads_the_design_but_never_commits_it(): void
+    {
+        $job = ['design' => [['path' => 'system.md', 'content' => '# Design']]] + $this->job();
+        Http::fake([
+            'droids.test/api/worker/claim' => Http::response(['run' => $job]),
+            'droids.test/api/worker/runs/5/progress' => Http::response(['cancelled' => false]),
+            'droids.test/api/worker/runs/5/token' => Http::response(['token' => 'ghs_push']),
+            'droids.test/api/worker/runs/5/finish' => Http::response(['status' => 'succeeded']),
+        ]);
+        $this->stubCli(<<<'SH'
+cp .droids/design/system.md design-copy.md
+echo '{"type":"result","subtype":"success","is_error":false,"result":"Used the design.","usage":{}}'
+SH);
+
+        $this->artisan('droids:work --once')->assertSuccessful();
+
+        $files = $this->sh(['git', 'ls-tree', '-r', '--name-only', 'droids/7-dark-mode'], "{$this->root}/git/vtalbot/droids.git");
+        $this->assertStringContainsString('design-copy.md', $files);
+        $this->assertStringNotContainsString('.droids', $files);
+        Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/finish') && ! isset($r['design']));
+    }
+
     private function pushBranch(string $branch): void
     {
         $this->sh(['git', 'checkout', '-q', '-b', $branch], "{$this->root}/seed");

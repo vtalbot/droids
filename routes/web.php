@@ -33,6 +33,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('projects/{project:slug}/cloud/deployments/{deployment}/logs', [Factory\CloudController::class, 'deploymentLogs'])->name('cloud.deployment-logs');
         Route::get('projects/{project:slug}/cloud/metrics', [Factory\CloudController::class, 'metrics'])->name('cloud.metrics');
 
+        Route::get('projects/{project:slug}/design', [Factory\DesignController::class, 'index'])->name('design.index');
+        Route::delete('projects/{project:slug}/design', [Factory\DesignController::class, 'destroy'])->name('design.destroy');
+
         Route::get('github/repos', [Factory\GitHubController::class, 'repos'])->name('github.repos');
         Route::post('projects/{project:slug}/sync', [Factory\GitHubController::class, 'sync'])->name('projects.sync');
         Route::post('projects/{project:slug}/pulls/{number}/merge', [Factory\GitHubController::class, 'merge'])->whereNumber('number')->name('pulls.merge');

@@ -182,7 +182,7 @@ class ReviewTest extends TestCase
         $this->assertSame([$this->builder->id, 'droids/7-add-dark-mode-toggle', 12], [$fix->droid_id, $fix->branch, $fix->pr_number]);
         $this->assertStringContainsString('- src/theme.ts:9: Persist the choice.', (string) $fix->input);
         $this->assertSame('working', $this->builder->fresh()->status);
-        $this->assertTrue(Activity::where('text', 'Asked for changes on PR #12, sent back to CL-01')->exists());
+        $this->assertTrue(Activity::where('text', 'Asked for changes on PR #12, sent back to Cog')->exists());
 
         $job = $this->claim();
         $this->assertSame('fix', $job['kind']);

@@ -2,6 +2,7 @@
 
 namespace App\Worker;
 
+use App\Runs\Design;
 use Closure;
 use Illuminate\Support\Facades\File;
 use RuntimeException;
@@ -63,6 +64,7 @@ class Runner
             } elseif ($kind === 'fix' || $kind === 'review') {
                 $this->git(['checkout', (string) $job['branch']], $dir); // the pull request's branch, from origin
             }
+            $this->placeDesign($job, $dir);
             if ($build) {
                 $this->git(['config', 'user.name', trim("{$job['droid']['unit']} {$job['droid']['name']}")], $dir);
                 $this->git(['config', 'user.email', 'droids@users.noreply.github.com'], $dir);
@@ -82,8 +84,13 @@ class Runner
             }
 
             $pushed = $build && $this->commitAndPush($job, $dir, $say);
+            $result = ['status' => 'succeeded', 'pushed' => $pushed];
+            if ($kind === 'design') {
+                $result['design'] = $this->collectDesign($dir);
+                $say('Sending '.count($result['design']).' design file(s)');
+            }
 
-            return $this->finish($id, ['status' => 'succeeded', 'pushed' => $pushed], $output);
+            return $this->finish($id, $result, $output);
         } catch (\Throwable $e) {
             return $this->finish($id, ['status' => 'failed', 'error' => $this->redact($e->getMessage(), $job)], $output);
         } finally {
@@ -175,13 +182,76 @@ class Runner
                 : [$bin, '-p', $prompt, '--model', $model, '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions'];
         }
 
-        $tools = ($job['kind'] ?? '') === 'review'
-            ? 'Read,Grep,Glob,LS,Bash(git diff:*),Bash(git log:*),Bash(git show:*)'
-            : 'Read,Grep,Glob,LS';
+        // A designer may write, but only in the design folder (Codex's sandbox can't narrow it, and the clone is thrown away).
+        $design = ($job['kind'] ?? '') === 'design';
+        $folder = './'.Design::DIR.'/**';
+        $tools = match ($job['kind'] ?? '') {
+            'review' => 'Read,Grep,Glob,LS,Bash(git diff:*),Bash(git log:*),Bash(git show:*)',
+            'design' => "Read,Grep,Glob,LS,Edit({$folder}),Write({$folder})",
+            default => 'Read,Grep,Glob,LS',
+        };
 
         return $job['provider'] === 'codex'
-            ? [$bin, 'exec', '--json', '--model', $model, '--sandbox', 'read-only', '--skip-git-repo-check', $prompt]
+            ? [$bin, 'exec', '--json', '--model', $model, '--sandbox', $design ? 'workspace-write' : 'read-only', '--skip-git-repo-check', $prompt]
             : [$bin, '-p', $prompt, '--model', $model, '--output-format', 'stream-json', '--verbose', '--allowedTools', $tools];
+    }
+
+    /**
+     * Put the project's design in the working folder, kept out of git so a build never commits it.
+     *
+     * @param  array<string, mixed>  $job
+     */
+    private function placeDesign(array $job, string $dir): void
+    {
+        $files = is_array($job['design'] ?? null) ? $job['design'] : [];
+        if ($files === [] && ($job['kind'] ?? '') !== 'design') {
+            return;
+        }
+        $root = $dir.'/'.Design::DIR;
+        File::ensureDirectoryExists($root);
+        foreach ($files as $f) {
+            $path = (string) ($f['path'] ?? '');
+            if (! Design::validPath($path)) {
+                continue;
+            }
+            File::ensureDirectoryExists(dirname("{$root}/{$path}"));
+            File::put("{$root}/{$path}", (string) ($f['content'] ?? ''));
+        }
+        if (File::isDirectory("{$dir}/.git")) {
+            File::ensureDirectoryExists("{$dir}/.git/info");
+            File::append("{$dir}/.git/info/exclude", "\n/".explode('/', Design::DIR)[0]."/\n");
+        }
+    }
+
+    /**
+     * The design folder after a designer run, to save on the server.
+     *
+     * @return list<array{path: string, content: string}>
+     */
+    private function collectDesign(string $dir): array
+    {
+        $root = $dir.'/'.Design::DIR;
+        if (! File::isDirectory($root)) {
+            return [];
+        }
+        $out = [];
+        foreach (File::allFiles($root, true) as $file) {
+            $path = str_replace('\\', '/', $file->getRelativePathname());
+            if (! Design::validPath($path) || $file->getSize() > Design::MAX_BYTES || $file->isLink()) {
+                continue;
+            }
+            $content = (string) File::get($file->getPathname());
+            if (! mb_check_encoding($content, 'UTF-8')) {
+                continue; // text only: images and fonts stay out
+            }
+            $out[] = ['path' => $path, 'content' => $content];
+            if (count($out) >= Design::MAX_FILES) {
+                break;
+            }
+        }
+        usort($out, fn (array $a, array $b) => strcmp($a['path'], $b['path']));
+
+        return $out;
     }
 
     /** @param array<string, mixed> $job */

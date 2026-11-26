@@ -26,15 +26,21 @@ class Conversation
     /** Builder runs a retrospective looks back over. */
     private const RETRO_RUNS = 10;
 
+    public function __construct(private Design $design) {}
+
     public static function topic(string $kind, Droid $droid, ?Project $project): string
     {
-        return in_array($kind, ['plan', 'propose'], true) && $project ? "plan:{$project->slug}" : $droid->slug;
+        return match (true) {
+            in_array($kind, ['plan', 'propose'], true) && $project !== null => "plan:{$project->slug}",
+            $kind === 'design' && $project !== null => "design:{$project->slug}",
+            default => $droid->slug,
+        };
     }
 
     /** The topic as stored on chat messages: null for a droid's own chat. */
     public static function storedTopic(string $topic): ?string
     {
-        return str_starts_with($topic, 'plan:') ? $topic : null;
+        return str_starts_with($topic, 'plan:') || str_starts_with($topic, 'design:') ? $topic : null;
     }
 
     public function prompt(Run $run): string
@@ -44,9 +50,13 @@ class Conversation
         $project = $run->project;
 
         $lines = ["You are {$droid->unit} {$droid->name}, a {$droid->role} droid in Droids, a software factory where AI droids build GitHub issues."];
-        $lines[] = $project?->isLinked()
-            ? "Your working folder is a fresh clone of {$project->repo}. Read the code as much as you need, but do not change, commit or push anything."
-            : 'You have no copy of the code for this conversation, so work from the context below.';
+        $design = $run->kind === 'design';
+        $lines[] = match (true) {
+            $design && $project?->isLinked() => "Your working folder is a fresh clone of {$project->repo}. Read the code to learn the product, but only write inside the folder ".Design::DIR.'/.',
+            $design => 'You have no copy of the code, so work from the context below. Only write inside the folder '.Design::DIR.'/.',
+            $project?->isLinked() => "Your working folder is a fresh clone of {$project->repo}. Read the code as much as you need, but do not change, commit or push anything.",
+            default => 'You have no copy of the code for this conversation, so work from the context below.',
+        };
         if ($droid->instructions) {
             $lines = [...$lines, '', 'Standing instructions from your operator:', $droid->instructions];
         }
@@ -55,8 +65,12 @@ class Conversation
             'plan' => $this->planContext($project),
             'propose' => $this->proposeContext($project),
             'reflect' => $this->reflectContext($droid),
+            'design' => $this->designContext($project),
             default => $this->chatContext($droid),
         }];
+        if (! $design) {
+            $lines = [...$lines, ...$this->design->promptLines($project, 'conversation')];
+        }
 
         $history = $this->history($run);
         if ($history !== []) {
@@ -149,6 +163,33 @@ class Conversation
     }
 
     /** @return list<string> */
+    private function designContext(?Project $project): array
+    {
+        if (! $project) {
+            return ['You are designing, but no project is selected.'];
+        }
+        $paths = $project->designFiles()->pluck('path')->all();
+        $dir = Design::DIR;
+
+        return [
+            "You are the designer for the project {$project->name} ({$project->repo}). The other droids on the project build, review and plan from what you write.",
+            $paths === []
+                ? "The design folder {$dir}/ is empty: this is the project's first design."
+                : "The design folder {$dir}/ already holds: ".implode(', ', $paths).'. Read it first and change it rather than starting over, unless the person asks for a new direction.',
+            '',
+            'How to design:',
+            '- Ground the design in the product: read the existing views, components, styles and any brand assets in the code before deciding anything.',
+            "- {$dir}/system.md is the design system: principles, color, typography, spacing, radius, elevation, motion, and each component with its variants and states. Keep it current: builders read it first.",
+            "- {$dir}/tokens.css holds the tokens as CSS custom properties on :root, with a dark theme under a .dark class or prefers-color-scheme if the product has one. Use the names the code already uses where it has them.",
+            "- Screens go in {$dir}/screens/<name>.html: one self-contained HTML file per screen, with its CSS inline and no scripts or outside requests, using the tokens and components from the system. Show realistic content and the empty, loading and error states that matter.",
+            '- Only write inside the design folder. Delete a file there only when the person asks or it is replaced.',
+            '- Accessibility is part of the design: color contrast at WCAG AA, visible focus, and touch targets of at least 44 px.',
+            '',
+            'In "message", tell the person what you designed or changed and why, in a few sentences, and name the files.',
+        ];
+    }
+
+    /** @return list<string> */
     private function chatContext(Droid $droid): array
     {
         $droid->loadMissing(['task', 'project']);
@@ -198,8 +239,12 @@ class Conversation
         return $lines;
     }
 
-    /** Turn the droid's answer into chat messages. */
-    public function answer(Run $run): void
+    /**
+     * Turn the droid's answer into chat messages.
+     *
+     * @param  array{changed: list<string>, removed: list<string>}|null  $design  the design files a designer run changed
+     */
+    public function answer(Run $run, ?array $design = null): void
     {
         $run->loadMissing(['droid', 'project']);
         $data = $this->decode((string) $run->summary);
@@ -208,6 +253,7 @@ class Conversation
         if (! is_array($data) || $text === null) {
             $raw = trim((string) $run->summary);
             $this->say($run, 'agent', ['text' => $raw !== '' ? Str::limit($raw, 6000) : 'I finished without an answer. Try asking again.']);
+            $this->sayDesign($run, $design);
 
             return;
         }
@@ -230,6 +276,15 @@ class Conversation
             ]),
             default => null,
         };
+        $this->sayDesign($run, $design);
+    }
+
+    /** @param array{changed: list<string>, removed: list<string>}|null $design */
+    private function sayDesign(Run $run, ?array $design): void
+    {
+        if ($run->kind === 'design' && $run->project && $design && ($design['changed'] !== [] || $design['removed'] !== [])) {
+            $this->say($run, 'design', ['project' => $run->project->slug, 'changed' => $design['changed'], 'removed' => $design['removed']]);
+        }
     }
 
     public function failed(Run $run, string $error): void

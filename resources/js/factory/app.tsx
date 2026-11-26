@@ -83,6 +83,7 @@ import {
     type Ask,
     type ChatItem,
     type CloudApp,
+    type DesignFile,
     type ColKey,
     type Droid,
     type FeedItem,
@@ -132,6 +133,7 @@ export type Store = {
     runs?: Record<string, Run>;
     asks?: Record<string, Ask>;
     cloudConnected?: boolean;
+    design?: Record<string, DesignFile[]>;
     workers?: { total: number; online: number };
 };
 export type Run = {
@@ -219,6 +221,26 @@ export default function FactoryApp({
         setChat({ droid: pl.id, plan: pid });
     };
     const [assembleOpen, setAssembleOpen] = useState(false);
+    const [assembleRole, setAssembleRole] = useState('Builder');
+    const assemble = (role = 'Builder') => {
+        setAssembleRole(role);
+        setAssembleOpen(true);
+    };
+    const designWith = (pid: string) => {
+        const ds =
+            store.droids.find(
+                (d) => d.project === pid && d.role === 'Designer',
+            ) ?? store.droids.find((d) => d.role === 'Designer');
+        if (!ds) {
+            toast.info(
+                'Assemble a designer droid first: it writes the design for every project it is asked about.',
+            );
+            assemble('Designer');
+            return;
+        }
+        setTaskKey(null);
+        setChat({ droid: ds.id, design: pid });
+    };
     const [connectOpen, setConnectOpen] = useState(false);
     const [syncing, setSyncing] = useState(false);
 
@@ -696,10 +718,7 @@ export default function FactoryApp({
                                 <GithubMark />
                                 Connect repo
                             </Button>
-                            <Button
-                                size="sm"
-                                onClick={() => setAssembleOpen(true)}
-                            >
+                            <Button size="sm" onClick={() => assemble()}>
                                 <PlusIcon />
                                 Assemble droid
                             </Button>
@@ -724,6 +743,7 @@ export default function FactoryApp({
                                 openTask={setTaskKey}
                                 planWith={planWith}
                                 propose={propose}
+                                designWith={designWith}
                             />
                         )}
                         {view === 'board' && <Board {...ctx} />}
@@ -781,6 +801,7 @@ export default function FactoryApp({
                     }}
                 />
                 <AssembleDialog
+                    defaultRole={assembleRole}
                     open={assembleOpen}
                     onOpenChange={setAssembleOpen}
                     projects={store.projects}
@@ -1245,9 +1266,12 @@ function IssuePicker({
                                                     {i.title}
                                                 </span>
                                                 <span className="ml-auto text-xs text-muted-foreground">
-                                                    {i.col === 'ready'
-                                                        ? 'Ready'
-                                                        : 'Backlog'}
+                                                    {
+                                                        COLS.find(
+                                                            (c) =>
+                                                                c.key === i.col,
+                                                        )?.label
+                                                    }
                                                 </span>
                                             </CommandItem>
                                         ))}
@@ -1485,7 +1509,10 @@ function Board({
                                 over === c.key && 'border-ring bg-accent',
                             )}
                         >
-                            <div className="flex items-center gap-2 px-1.5 py-1 text-sm font-medium">
+                            <div
+                                className="flex items-center gap-2 px-1.5 py-1 text-sm font-medium"
+                                title={c.hint}
+                            >
                                 {c.label}
                                 <span className="text-muted-foreground">
                                     {items.length}
@@ -1669,13 +1696,13 @@ function Chip({
                         seed={d.seed}
                         className="size-5"
                     />
-                    <span className="font-mono">{d.unit}</span>
+                    <span className="font-medium">{d.name}</span>
                     <span className="text-muted-foreground">{label}</span>
                 </button>
             </TooltipTrigger>
             <TooltipContent>
-                {d.name} · {PROVIDERS[d.provider].label} {d.model}. Click to
-                chat.
+                {d.unit} {d.name}, {d.role.toLowerCase()} on{' '}
+                {PROVIDERS[d.provider].label} {d.model}. Click to chat.
             </TooltipContent>
         </Tooltip>
     );

@@ -57,6 +57,12 @@ class Project extends Model
         return [$owner, $name];
     }
 
+    /** @return HasMany<DesignFile, $this> */
+    public function designFiles(): HasMany
+    {
+        return $this->hasMany(DesignFile::class)->orderBy('path');
+    }
+
     /** @return HasMany<Milestone, $this> */
     public function milestones(): HasMany
     {
