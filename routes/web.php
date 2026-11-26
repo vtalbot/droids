@@ -25,6 +25,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('projects/{project:slug}/milestones', [Factory\RoadmapController::class, 'storeMilestone'])->name('milestones.store');
         Route::post('milestones/{milestone}/features', [Factory\RoadmapController::class, 'storeFeature'])->name('features.store');
 
+        Route::get('cloud/applications', [Factory\CloudController::class, 'applications'])->name('cloud.applications');
+        Route::post('projects/{project:slug}/cloud', [Factory\CloudController::class, 'link'])->name('cloud.link');
+        Route::delete('projects/{project:slug}/cloud', [Factory\CloudController::class, 'unlink'])->name('cloud.unlink');
+        Route::post('projects/{project:slug}/cloud/refresh', [Factory\CloudController::class, 'refresh'])->name('cloud.refresh');
+        Route::post('projects/{project:slug}/cloud/deploy', [Factory\CloudController::class, 'deploy'])->name('cloud.deploy');
+        Route::get('projects/{project:slug}/cloud/deployments/{deployment}/logs', [Factory\CloudController::class, 'deploymentLogs'])->name('cloud.deployment-logs');
+        Route::get('projects/{project:slug}/cloud/metrics', [Factory\CloudController::class, 'metrics'])->name('cloud.metrics');
+
         Route::get('github/repos', [Factory\GitHubController::class, 'repos'])->name('github.repos');
         Route::post('projects/{project:slug}/sync', [Factory\GitHubController::class, 'sync'])->name('projects.sync');
         Route::post('projects/{project:slug}/pulls/{number}/merge', [Factory\GitHubController::class, 'merge'])->whereNumber('number')->name('pulls.merge');

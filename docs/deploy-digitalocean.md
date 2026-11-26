@@ -390,6 +390,16 @@ The App is private, so only your account can install it.
 
 The droids themselves run on your own computer, not on the droplet. Follow [worker.md](worker.md) to set one up.
 
+### Connect Laravel Cloud (optional)
+
+If a project is hosted on [Laravel Cloud](https://cloud.laravel.com), its **Cloud** tab can show its environments, deployments, CPU and memory, and recent logs, and start a deployment.
+
+1. In Laravel Cloud, open your organization's settings, then **API tokens**, and create a token. It needs to read applications, environments, deployments, metrics and logs, and to create deployments if you want the Deploy button.
+2. In Droids, open **Settings > Laravel Cloud** and paste the token. Droids checks it with Laravel Cloud before saving it, and stores it encrypted.
+3. Open a project's **Cloud** tab, press **Link a Laravel Cloud app**, and pick the application. Applications built from the project's repository are listed first.
+
+The scheduler (step 8) refreshes linked projects every 5 minutes, and the tab refreshes every few seconds while a deployment is running. Laravel Cloud has no webhooks, so a deployment started from Laravel Cloud itself shows up on the next refresh. A token without access to metrics or logs still works: those parts of the tab stay empty.
+
 ## 11. Deploying updates
 
 Save this as `/var/www/droids/deploy.sh` (it is not tracked by git), make it executable with `chmod +x`, and run it as `deploy` after each merge to `main`:

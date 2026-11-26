@@ -131,6 +131,7 @@ export type Store = {
     github?: { configured: boolean };
     runs?: Record<string, Run>;
     asks?: Record<string, Ask>;
+    cloudConnected?: boolean;
     workers?: { total: number; online: number };
 };
 export type Run = {

@@ -9,6 +9,7 @@ import {
     ExternalLinkIcon,
     GaugeIcon,
     GitCommitHorizontalIcon,
+    LinkIcon,
     LoaderCircleIcon,
     MoonIcon,
     RocketIcon,
@@ -16,6 +17,7 @@ import {
     ServerIcon,
     TimerIcon,
     XCircleIcon,
+    UnlinkIcon,
     ZapIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -52,7 +54,15 @@ import {
     ChartTooltipContent,
     type ChartConfig,
 } from '@/components/ui/chart';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { BUILD_LOG } from '@/factory/demo';
+import { applyServerStore, request, useSave } from '@/factory/api';
 import {
     DEPLOY_STEPS,
     type CloudEnv,
@@ -79,8 +89,30 @@ const live = (s: DeployStatus) =>
         'deployment.succeeded',
         'deployment.failed',
         'build.failed',
+        'failed',
         'cancelled',
     ].includes(s);
+const CLOUD_PERIODS = ['6h', '24h', '3d', '7d', '30d'];
+
+/** Short label for a metrics timestamp: the hour within a day, the date beyond. */
+function timeLabel(x: string, period: string) {
+    const d = new Date(x);
+    if (Number.isNaN(d.getTime())) return x;
+    return ['6h', '24h'].includes(period)
+        ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+function initials(name: string) {
+    return (
+        name
+            .split(/[\s._-]+/)
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((w) => w[0]?.toUpperCase())
+            .join('') || '?'
+    );
+}
 const metricCfg = {
     cpu: { label: 'CPU', color: 'var(--working)' },
     mem: { label: 'Memory', color: 'var(--claude)' },
@@ -95,7 +127,15 @@ export function cloudHealth(store: Store, pid: string) {
             cls: 'text-muted-foreground',
             dot: 'bg-idle',
         };
-    const prod = app.envs.find((e) => e.name === 'production')!;
+    const prod = app.envs.find((e) => e.name === 'production') ?? app.envs[0];
+    if (!prod)
+        return {
+            label: 'No environments',
+            note: app.app,
+            cls: 'text-muted-foreground',
+            dot: 'bg-idle',
+        };
+    const latest = app.deployments.find((d) => d.env === prod.id);
     const failing =
         prod.probes.some((p) => !p.ok) ||
         prod.scheduled.some((s) => !s.ok) ||
@@ -110,6 +150,17 @@ export function cloudHealth(store: Store, pid: string) {
             cls: 'text-needs',
             dot: 'bg-needs status-glow',
         };
+    if (
+        app.linked &&
+        latest &&
+        ['build.failed', 'deployment.failed', 'failed'].includes(latest.status)
+    )
+        return {
+            label: 'Deploy failed',
+            note: `${prod.name} · ${latest.commit}`,
+            cls: 'text-blocked',
+            dot: 'bg-blocked',
+        };
     if (failing)
         return {
             label: 'Degraded',
@@ -122,7 +173,10 @@ export function cloudHealth(store: Store, pid: string) {
         };
     return {
         label: 'Healthy',
-        note: `${prod.domain} · ${prod.instances[0].replicas} replicas`,
+        note:
+            prod.instances[0]?.replicas !== undefined
+                ? `${prod.domain} · ${prod.instances[0].replicas} replicas`
+                : prod.domain || prod.name,
         cls: 'text-done',
         dot: 'bg-done',
     };
@@ -174,13 +228,43 @@ export function CloudPanel({
     pid: string;
 }) {
     const app = store.cloud[pid];
+    const save = useSave();
     const [period, setPeriod] = useState('24h');
     const [target, setTarget] = useState('prod');
+    const [series, setSeries] = useState<{
+        period: string;
+        cpu: number[];
+        mem: number[];
+        times: string[];
+    } | null>(null);
+    const [logsFor, setLogsFor] = useState<Deployment | null>(null);
+    const linked = !!app?.linked;
+    const anyLive = !!app?.deployments.some((d) => live(d.status));
 
-    // simulate live deployment progress (what `cloud deploy:monitor` shows)
+    // A linked app: refresh from Laravel Cloud every few seconds while a deployment runs.
+    useEffect(() => {
+        if (!linked || !anyLive) return;
+        const t = setInterval(() => {
+            if (document.hidden) return;
+            request(
+                'POST',
+                `/factory/projects/${encodeURIComponent(pid)}/cloud/refresh`,
+            )
+                .then((res) => {
+                    applyServerStore(store, res.store);
+                    bump();
+                })
+                .catch(() => {
+                    /* try again on the next tick */
+                });
+        }, 6000);
+        return () => clearInterval(t);
+    }, [linked, anyLive, pid, store, bump]);
+
+    // Sample data: simulate live deployment progress (what `cloud deploy:monitor` shows)
     useEffect(() => {
         const t = setInterval(() => {
-            if (!app) return;
+            if (!app || app.linked) return;
             let changed = false;
             app.deployments.forEach((d) => {
                 if (!live(d.status)) return;
@@ -223,28 +307,40 @@ export function CloudPanel({
                     Not on Laravel Cloud
                 </div>
                 <p className="max-w-md text-muted-foreground">
-                    This project ships as a CLI, so there's nothing to host.
-                    Link a Laravel Cloud application to see deployments, health
-                    and logs here.
+                    Link a Laravel Cloud application to see its environments,
+                    deployments, health and logs here, and deploy from Droids.
                 </p>
-                <Button
-                    variant="outline"
-                    onClick={() =>
-                        toast('Sign in to Laravel Cloud', {
-                            description:
-                                'Uses an API token from cloud auth:token',
-                        })
-                    }
-                >
-                    Link a Laravel Cloud app
-                </Button>
+                <LinkCloudDialog
+                    store={store}
+                    pid={pid}
+                    repo={store.projects.find((p) => p.id === pid)?.repo}
+                />
             </div>
         );
 
     const prod = app.envs[0];
     const running = app.deployments.find((d) => live(d.status));
+    const tgt = app.envs.some((e) => e.id === target)
+        ? target
+        : (app.envs[0]?.id ?? '');
+    const project = store.projects.find((p) => p.id === pid);
     const deploy = () => {
-        const env = app.envs.find((e) => e.id === target)!;
+        const env = app.envs.find((e) => e.id === tgt);
+        if (!env) return;
+        if (linked) {
+            void save(
+                'POST',
+                `/factory/projects/${encodeURIComponent(pid)}/cloud/deploy`,
+                { environment: env.id },
+            ).then(
+                (res) =>
+                    res &&
+                    toast(`Deploying ${env.name}`, {
+                        description: 'Laravel Cloud is building it',
+                    }),
+            );
+            return;
+        }
         app.deployments.unshift({
             id: `d${Date.now() % 100000}`,
             env: env.id,
@@ -267,11 +363,57 @@ export function CloudPanel({
             description: 'cloud deploy · monitoring progress',
         });
     };
-    const cpu = app.cpu.map((v, h) => ({
-        t: `${String(h).padStart(2, '0')}:00`,
+    const shown =
+        linked && series && series.period === period
+            ? series
+            : { cpu: app.cpu, mem: app.mem, times: app.times ?? [] };
+    const cpu = shown.cpu.map((v, h) => ({
+        t: shown.times[h]
+            ? timeLabel(shown.times[h], linked ? period : '24h')
+            : `${String(h).padStart(2, '0')}:00`,
         cpu: v,
-        mem: app.mem[h],
+        mem: shown.mem[h],
     }));
+    const changePeriod = (v: string) => {
+        setPeriod(v);
+        if (!linked || v === '24h') return;
+        request(
+            'GET',
+            `/factory/projects/${encodeURIComponent(pid)}/cloud/metrics?period=${v}`,
+        )
+            .then((res) =>
+                setSeries({
+                    period: v,
+                    cpu: res.cpu as unknown as number[],
+                    mem: res.mem as unknown as number[],
+                    times: res.times as unknown as string[],
+                }),
+            )
+            .catch((e: Error) => toast.error(e.message));
+    };
+    const handToDroid = async (d: Deployment, env: CloudEnv) => {
+        const res = await save(
+            'POST',
+            `/factory/projects/${encodeURIComponent(pid)}/tasks`,
+            {
+                tasks: [
+                    {
+                        title: `Fix failed deployment to ${env.name}: ${d.message}`.slice(
+                            0,
+                            200,
+                        ),
+                        labels: ['bug'],
+                        body: `Laravel Cloud could not deploy ${d.commit} (${d.branch}) to ${env.name}.\n\n\`\`\`\n${d.failure ?? ''}\n\`\`\``,
+                    },
+                ],
+            },
+        );
+        if (!res) return;
+        const n = (res.numbers as number[])[0];
+        toast.success(`Created #${n} in the Backlog`, {
+            description: 'Assign a builder to have a droid fix it',
+        });
+    };
     const who = (name: string) =>
         store.droids.find((d) => name.startsWith(d.unit));
 
@@ -287,12 +429,38 @@ export function CloudPanel({
                         </span>
                     </div>
                     <div className="text-sm text-muted-foreground">
-                        Usage this period ${app.usage.toFixed(2)} ·
-                        push-to-deploy on{' '}
-                        <span className="font-mono">main</span>
+                        {linked ? (
+                            <>
+                                {prod?.pushToDeploy && prod.branch && (
+                                    <>
+                                        Push-to-deploy on{' '}
+                                        <span className="font-mono">
+                                            {prod.branch}
+                                        </span>{' '}
+                                        ·{' '}
+                                    </>
+                                )}
+                                Synced{' '}
+                                {app.synced
+                                    ? new Date(app.synced).toLocaleTimeString(
+                                          [],
+                                          {
+                                              hour: '2-digit',
+                                              minute: '2-digit',
+                                          },
+                                      )
+                                    : 'never'}
+                            </>
+                        ) : (
+                            <>
+                                Usage this period ${(app.usage ?? 0).toFixed(2)}{' '}
+                                · push-to-deploy on{' '}
+                                <span className="font-mono">main</span>
+                            </>
+                        )}
                     </div>
                 </div>
-                <Select value={target} onValueChange={setTarget}>
+                <Select value={tgt} onValueChange={setTarget}>
                     <SelectTrigger
                         className="h-9 w-48"
                         aria-label="Environment"
@@ -310,8 +478,9 @@ export function CloudPanel({
                 <Button
                     onClick={deploy}
                     disabled={
+                        !tgt ||
                         !!app.deployments.find(
-                            (d) => d.env === target && live(d.status),
+                            (d) => d.env === tgt && live(d.status),
                         )
                     }
                 >
@@ -321,14 +490,57 @@ export function CloudPanel({
                 <Button
                     variant="outline"
                     onClick={() =>
-                        toast('Opens cloud.laravel.com', {
-                            description: `${app.org} / ${app.app}`,
-                        })
+                        linked
+                            ? window.open(
+                                  'https://cloud.laravel.com',
+                                  '_blank',
+                                  'noopener',
+                              )
+                            : toast('Opens cloud.laravel.com', {
+                                  description: `${app.org} / ${app.app}`,
+                              })
                     }
                 >
                     <ExternalLinkIcon />
                     Open in Cloud
                 </Button>
+                {linked && (
+                    <>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Refresh from Laravel Cloud"
+                            onClick={() =>
+                                void save(
+                                    'POST',
+                                    `/factory/projects/${encodeURIComponent(pid)}/cloud/refresh`,
+                                )
+                            }
+                        >
+                            <RotateCwIcon />
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label={`Unlink ${app.app} from ${project?.name ?? 'this project'}`}
+                            onClick={() =>
+                                void save(
+                                    'DELETE',
+                                    `/factory/projects/${encodeURIComponent(pid)}/cloud`,
+                                ).then(
+                                    (res) =>
+                                        res &&
+                                        toast(`Unlinked ${app.app}`, {
+                                            description:
+                                                'Link it again any time from this tab',
+                                        }),
+                                )
+                            }
+                        >
+                            <UnlinkIcon />
+                        </Button>
+                    </>
+                )}
             </div>
 
             {running && (
@@ -336,6 +548,7 @@ export function CloudPanel({
                     d={running}
                     env={app.envs.find((e) => e.id === running.env)!}
                     who={who}
+                    demo={!linked}
                 />
             )}
 
@@ -350,7 +563,9 @@ export function CloudPanel({
                     <CardHeader className="flex flex-row flex-wrap items-start gap-2 px-4">
                         <div className="mr-auto">
                             <CardTitle className="text-base">
-                                Production compute
+                                {linked
+                                    ? `${prod?.name ?? 'Default'} compute`
+                                    : 'Production compute'}
                             </CardTitle>
                             <CardDescription>
                                 CPU and memory, averaged across replicas (%)
@@ -361,10 +576,13 @@ export function CloudPanel({
                             size="sm"
                             variant="outline"
                             value={period}
-                            onValueChange={(v) => v && setPeriod(v)}
+                            onValueChange={(v) => v && changePeriod(v)}
                             aria-label="Metrics period"
                         >
-                            {['1h', '6h', '24h', '7d', '30d'].map((x) => (
+                            {(linked
+                                ? CLOUD_PERIODS
+                                : ['1h', '6h', '24h', '7d', '30d']
+                            ).map((x) => (
                                 <ToggleGroupItem
                                     key={x}
                                     value={x}
@@ -376,6 +594,12 @@ export function CloudPanel({
                         </ToggleGroup>
                     </CardHeader>
                     <CardContent className="px-2">
+                        {cpu.length === 0 && (
+                            <p className="px-2 text-sm text-muted-foreground">
+                                No metrics yet. The API token may need
+                                permission to read environment metrics.
+                            </p>
+                        )}
                         <ChartContainer
                             config={metricCfg}
                             className="aspect-auto h-[340px] w-full"
@@ -390,7 +614,8 @@ export function CloudPanel({
                                     tickLine={false}
                                     axisLine={false}
                                     tickMargin={8}
-                                    interval={5}
+                                    interval="preserveStartEnd"
+                                    minTickGap={24}
                                 />
                                 <YAxis
                                     width={30}
@@ -424,13 +649,23 @@ export function CloudPanel({
                     <CardHeader className="px-4">
                         <CardTitle className="flex items-center gap-2 text-base">
                             <ActivityIcon className="size-4" />
-                            Production health
+                            {linked
+                                ? `${prod?.name ?? ''} health`
+                                : 'Production health'}
                         </CardTitle>
-                        <CardDescription>{prod.domain}</CardDescription>
+                        <CardDescription>{prod?.domain}</CardDescription>
                     </CardHeader>
                     <CardContent className="grid gap-3 px-4 text-sm">
+                        {linked && prod && (
+                            <LatestDeploy
+                                d={app.deployments.find(
+                                    (d) => d.env === prod.id,
+                                )}
+                                env={prod}
+                            />
+                        )}
                         <ul className="grid gap-1.5">
-                            {prod.probes.map((p) => (
+                            {prod?.probes.map((p) => (
                                 <li
                                     key={p.kind}
                                     className="flex items-center gap-2"
@@ -450,7 +685,7 @@ export function CloudPanel({
                                 </li>
                             ))}
                         </ul>
-                        {prod.db && (
+                        {prod?.db && (
                             <div className="grid gap-2 rounded-lg border p-3">
                                 <div className="flex items-center gap-2 font-medium">
                                     <DatabaseIcon className="size-4" />
@@ -466,7 +701,7 @@ export function CloudPanel({
                                 />
                             </div>
                         )}
-                        {prod.cache && (
+                        {prod?.cache && (
                             <div className="grid gap-2 rounded-lg border p-3">
                                 <div className="flex items-center gap-2 font-medium">
                                     <ZapIcon className="size-4" />
@@ -479,7 +714,7 @@ export function CloudPanel({
                                 <Meter label="Memory" used={prod.cache.mem} />
                             </div>
                         )}
-                        {prod.queue && (
+                        {prod?.queue && (
                             <div className="flex items-center gap-2 rounded-lg border p-3">
                                 <GaugeIcon className="size-4" />
                                 <span>Queue: {prod.queue.pending} pending</span>
@@ -512,40 +747,42 @@ export function CloudPanel({
                                 )}
                             </div>
                         )}
-                        <div className="grid gap-1.5">
-                            <div className="flex items-center gap-2 font-medium">
-                                <TimerIcon className="size-4" />
-                                Scheduled commands
-                            </div>
-                            {prod.scheduled.map((s) => (
-                                <div
-                                    key={s.cmd}
-                                    className="flex items-center gap-2 text-xs"
-                                >
-                                    {s.ok ? (
-                                        <CheckCircle2Icon className="size-3.5 text-done" />
-                                    ) : (
-                                        <XCircleIcon className="size-3.5 text-blocked" />
-                                    )}
-                                    <span className="truncate font-mono">
-                                        {s.cmd.replace('php artisan ', '')}
-                                    </span>
-                                    <span className="font-mono text-muted-foreground">
-                                        {s.cron}
-                                    </span>
-                                    <span
-                                        className={cn(
-                                            'ml-auto whitespace-nowrap',
-                                            s.ok
-                                                ? 'text-muted-foreground'
-                                                : 'text-blocked',
-                                        )}
-                                    >
-                                        {s.last}
-                                    </span>
+                        {(prod?.scheduled.length ?? 0) > 0 && (
+                            <div className="grid gap-1.5">
+                                <div className="flex items-center gap-2 font-medium">
+                                    <TimerIcon className="size-4" />
+                                    Scheduled commands
                                 </div>
-                            ))}
-                        </div>
+                                {prod?.scheduled.map((s) => (
+                                    <div
+                                        key={s.cmd}
+                                        className="flex items-center gap-2 text-xs"
+                                    >
+                                        {s.ok ? (
+                                            <CheckCircle2Icon className="size-3.5 text-done" />
+                                        ) : (
+                                            <XCircleIcon className="size-3.5 text-blocked" />
+                                        )}
+                                        <span className="truncate font-mono">
+                                            {s.cmd.replace('php artisan ', '')}
+                                        </span>
+                                        <span className="font-mono text-muted-foreground">
+                                            {s.cron}
+                                        </span>
+                                        <span
+                                            className={cn(
+                                                'ml-auto whitespace-nowrap',
+                                                s.ok
+                                                    ? 'text-muted-foreground'
+                                                    : 'text-blocked',
+                                            )}
+                                        >
+                                            {s.last}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
             </div>
@@ -554,8 +791,9 @@ export function CloudPanel({
                 <CardHeader className="px-4">
                     <CardTitle className="text-base">Deployments</CardTitle>
                     <CardDescription>
-                        Push-to-deploy on merge; droids are credited when their
-                        PR triggers it
+                        {linked
+                            ? 'Latest deployments of each environment'
+                            : 'Push-to-deploy on merge; droids are credited when their PR triggers it'}
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="px-0">
@@ -576,10 +814,21 @@ export function CloudPanel({
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
+                                {app.deployments.length === 0 && (
+                                    <TableRow>
+                                        <TableCell
+                                            colSpan={6}
+                                            className="pl-4 text-sm text-muted-foreground"
+                                        >
+                                            No deployments yet.
+                                        </TableCell>
+                                    </TableRow>
+                                )}
                                 {app.deployments.map((d) => {
                                     const env = app.envs.find(
                                         (e) => e.id === d.env,
-                                    )!;
+                                    );
+                                    if (!env) return null;
                                     const dr = who(d.author);
                                     return (
                                         <Fragment key={d.id}>
@@ -631,7 +880,9 @@ export function CloudPanel({
                                                             />
                                                         ) : (
                                                             <span className="grid size-5 place-items-center rounded-full bg-primary text-[9px] font-semibold text-primary-foreground">
-                                                                VT
+                                                                {initials(
+                                                                    d.author,
+                                                                )}
                                                             </span>
                                                         )}
                                                         {d.author}
@@ -660,13 +911,18 @@ export function CloudPanel({
                                                                     variant="outline"
                                                                     className="h-7"
                                                                     onClick={() =>
-                                                                        toast.success(
-                                                                            'CL-07 Rivet picked it up',
-                                                                            {
-                                                                                description:
-                                                                                    'New issue #422: migration order_events already exists',
-                                                                            },
-                                                                        )
+                                                                        linked
+                                                                            ? void handToDroid(
+                                                                                  d,
+                                                                                  env,
+                                                                              )
+                                                                            : toast.success(
+                                                                                  'CL-07 Rivet picked it up',
+                                                                                  {
+                                                                                      description:
+                                                                                          'New issue #422: migration order_events already exists',
+                                                                                  },
+                                                                              )
                                                                     }
                                                                 >
                                                                     Hand to a
@@ -677,10 +933,14 @@ export function CloudPanel({
                                                                     variant="ghost"
                                                                     className="h-7"
                                                                     onClick={() =>
-                                                                        toast(
-                                                                            'cloud deployment:logs ' +
-                                                                                d.id,
-                                                                        )
+                                                                        linked
+                                                                            ? setLogsFor(
+                                                                                  d,
+                                                                              )
+                                                                            : toast(
+                                                                                  'cloud deployment:logs ' +
+                                                                                      d.id,
+                                                                              )
                                                                     }
                                                                 >
                                                                     Full logs
@@ -702,18 +962,31 @@ export function CloudPanel({
             <Card className="gap-2 py-4">
                 <CardHeader className="flex flex-row items-center gap-2 px-4">
                     <CardTitle className="mr-auto text-base">
-                        Production logs
+                        {linked
+                            ? `${prod?.name ?? ''} logs`
+                            : 'Production logs'}
                     </CardTitle>
                     <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <span className="status-glow size-2 rounded-full bg-done" />
-                        Live tail
+                        {linked ? (
+                            'Last hour, at the last sync'
+                        ) : (
+                            <>
+                                <span className="status-glow size-2 rounded-full bg-done" />
+                                Live tail
+                            </>
+                        )}
                     </span>
                 </CardHeader>
                 <CardContent className="px-4">
                     <div className="overflow-x-auto rounded-lg bg-muted/60 p-3 font-mono text-xs leading-relaxed">
-                        {app.logs.map((l) => (
+                        {app.logs.length === 0 && (
+                            <div className="text-muted-foreground">
+                                No log lines in the last hour.
+                            </div>
+                        )}
+                        {app.logs.map((l, k) => (
                             <div
-                                key={l}
+                                key={k}
                                 className={cn(
                                     'whitespace-pre',
                                     l.includes('ERROR') && 'text-blocked',
@@ -726,7 +999,228 @@ export function CloudPanel({
                     </div>
                 </CardContent>
             </Card>
+            {linked && (
+                <DeploymentLogs
+                    pid={pid}
+                    d={logsFor}
+                    onClose={() => setLogsFor(null)}
+                />
+            )}
         </div>
+    );
+}
+
+function LatestDeploy({ d, env }: { d?: Deployment; env: CloudEnv }) {
+    if (!d)
+        return (
+            <p className="text-muted-foreground">
+                {env.name} has no deployments yet.
+            </p>
+        );
+    return (
+        <div className="grid gap-1.5 rounded-lg border p-3">
+            <div className="flex items-center gap-2">
+                <span className="font-medium">Latest deployment</span>
+                <span className="ml-auto">
+                    <DeployBadge s={d.status} />
+                </span>
+            </div>
+            <div className="text-xs text-muted-foreground">
+                <span className="font-mono">{d.commit}</span> {d.message} ·{' '}
+                {d.started}
+            </div>
+        </div>
+    );
+}
+
+type LogStep = { phase: string; step: string; status: string; output: string };
+
+function DeploymentLogs({
+    pid,
+    d,
+    onClose,
+}: {
+    pid: string;
+    d: Deployment | null;
+    onClose: () => void;
+}) {
+    const [steps, setSteps] = useState<LogStep[] | null>(null);
+    const [error, setError] = useState('');
+    useEffect(() => {
+        if (!d) return;
+        setSteps(null);
+        setError('');
+        request(
+            'GET',
+            `/factory/projects/${encodeURIComponent(pid)}/cloud/deployments/${encodeURIComponent(d.id)}/logs`,
+        )
+            .then((res) => setSteps(res.steps as unknown as LogStep[]))
+            .catch((e: Error) => setError(e.message));
+    }, [d, pid]);
+    return (
+        <Dialog open={!!d} onOpenChange={(o) => !o && onClose()}>
+            <DialogContent className="sm:max-w-3xl">
+                <DialogHeader>
+                    <DialogTitle>Deployment logs</DialogTitle>
+                    <DialogDescription>
+                        <span className="font-mono">{d?.commit}</span>{' '}
+                        {d?.message}
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="grid max-h-[60vh] gap-3 overflow-y-auto">
+                    {error && <p className="text-sm text-blocked">{error}</p>}
+                    {!steps && !error && (
+                        <p className="text-sm text-muted-foreground">
+                            Loading…
+                        </p>
+                    )}
+                    {steps?.length === 0 && (
+                        <p className="text-sm text-muted-foreground">
+                            Laravel Cloud has no logs for this deployment.
+                        </p>
+                    )}
+                    {steps?.map((s, i) => (
+                        <div key={i} className="grid gap-1">
+                            <div className="flex items-center gap-2 text-sm">
+                                <span className="text-xs text-muted-foreground capitalize">
+                                    {s.phase}
+                                </span>
+                                <span className="font-medium">{s.step}</span>
+                                <span
+                                    className={cn(
+                                        'ml-auto text-xs',
+                                        s.status.includes('fail')
+                                            ? 'text-blocked'
+                                            : 'text-muted-foreground',
+                                    )}
+                                >
+                                    {s.status}
+                                </span>
+                            </div>
+                            {s.output && (
+                                <pre className="overflow-x-auto rounded-md bg-muted/60 p-2 font-mono text-[11px] whitespace-pre-wrap">
+                                    {s.output}
+                                </pre>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function LinkCloudDialog({
+    store,
+    pid,
+    repo,
+}: {
+    store: Store;
+    pid: string;
+    repo?: string;
+}) {
+    const save = useSave();
+    const [open, setOpen] = useState(false);
+    const [apps, setApps] =
+        useState<
+            { id: string; name: string; region: string; repo: string | null }[]
+        >();
+    const [error, setError] = useState('');
+    const [busy, setBusy] = useState('');
+    useEffect(() => {
+        if (!open) return;
+        setApps(undefined);
+        setError('');
+        request(
+            'GET',
+            `/factory/cloud/applications?repo=${encodeURIComponent(repo ?? '')}`,
+        )
+            .then((res) => setApps(res.applications as unknown as typeof apps))
+            .catch((e: Error) => setError(e.message));
+    }, [open, repo]);
+    if (!store.cloudConnected)
+        return (
+            <Button variant="outline" asChild>
+                <a href="/settings/cloud">
+                    <LinkIcon />
+                    Connect Laravel Cloud in Settings
+                </a>
+            </Button>
+        );
+    return (
+        <>
+            <Button variant="outline" onClick={() => setOpen(true)}>
+                <LinkIcon />
+                Link a Laravel Cloud app
+            </Button>
+            <Dialog open={open} onOpenChange={setOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Link a Laravel Cloud app</DialogTitle>
+                        <DialogDescription>
+                            Apps deployed from {repo ?? 'this repository'} are
+                            listed first.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-1">
+                        {error && (
+                            <p className="text-sm text-blocked">{error}</p>
+                        )}
+                        {!apps && !error && (
+                            <p className="text-sm text-muted-foreground">
+                                Loading…
+                            </p>
+                        )}
+                        {apps?.length === 0 && (
+                            <p className="text-sm text-muted-foreground">
+                                The API token can't see any applications.
+                            </p>
+                        )}
+                        {apps?.map((a) => (
+                            <button
+                                key={a.id}
+                                type="button"
+                                disabled={!!busy}
+                                className="flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-accent disabled:opacity-60"
+                                onClick={async () => {
+                                    setBusy(a.id);
+                                    const res = await save(
+                                        'POST',
+                                        `/factory/projects/${encodeURIComponent(pid)}/cloud`,
+                                        { application: a.id },
+                                    );
+                                    setBusy('');
+                                    if (!res) return;
+                                    setOpen(false);
+                                    toast.success(`Linked ${a.name}`);
+                                }}
+                            >
+                                <CloudIcon className="size-4 text-muted-foreground" />
+                                <span className="font-medium">{a.name}</span>
+                                <span className="text-xs text-muted-foreground">
+                                    {a.region}
+                                </span>
+                                {a.repo && (
+                                    <span
+                                        className={cn(
+                                            'ml-auto font-mono text-xs',
+                                            a.repo === repo
+                                                ? 'text-done'
+                                                : 'text-muted-foreground',
+                                        )}
+                                    >
+                                        {a.repo}
+                                    </span>
+                                )}
+                                {busy === a.id && (
+                                    <LoaderCircleIcon className="size-4 animate-spin" />
+                                )}
+                            </button>
+                        ))}
+                    </div>
+                </DialogContent>
+            </Dialog>
+        </>
     );
 }
 
@@ -734,10 +1228,12 @@ function LiveDeploy({
     d,
     env,
     who,
+    demo,
 }: {
     d: Deployment;
     env: CloudEnv;
     who: (n: string) => Store['droids'][number] | undefined;
+    demo: boolean;
 }) {
     const step = (d as Deployment & { step?: number }).step ?? 2;
     const cur = DEPLOY_STEPS.findIndex((s) => s.from.includes(d.status));
@@ -803,29 +1299,31 @@ function LiveDeploy({
                         </li>
                     ))}
                 </ol>
-                <div className="rounded-lg bg-muted/60 p-3 font-mono text-xs leading-relaxed">
-                    {BUILD_LOG.slice(
-                        0,
-                        Math.max(1, Math.min(BUILD_LOG.length, step + 1)),
-                    ).map((l, i, a) => (
-                        <div
-                            key={l}
-                            className={cn(
-                                'flex gap-2',
-                                i === a.length - 1
-                                    ? 'text-foreground'
-                                    : 'text-muted-foreground',
-                            )}
-                        >
-                            {i === a.length - 1 ? (
-                                <LoaderCircleIcon className="mt-0.5 size-3 shrink-0 animate-spin" />
-                            ) : (
-                                <CheckCircle2Icon className="mt-0.5 size-3 shrink-0 text-done" />
-                            )}
-                            {l}
-                        </div>
-                    ))}
-                </div>
+                {demo && (
+                    <div className="rounded-lg bg-muted/60 p-3 font-mono text-xs leading-relaxed">
+                        {BUILD_LOG.slice(
+                            0,
+                            Math.max(1, Math.min(BUILD_LOG.length, step + 1)),
+                        ).map((l, i, a) => (
+                            <div
+                                key={l}
+                                className={cn(
+                                    'flex gap-2',
+                                    i === a.length - 1
+                                        ? 'text-foreground'
+                                        : 'text-muted-foreground',
+                                )}
+                            >
+                                {i === a.length - 1 ? (
+                                    <LoaderCircleIcon className="mt-0.5 size-3 shrink-0 animate-spin" />
+                                ) : (
+                                    <CheckCircle2Icon className="mt-0.5 size-3 shrink-0 text-done" />
+                                )}
+                                {l}
+                            </div>
+                        ))}
+                    </div>
+                )}
             </CardContent>
         </Card>
     );
@@ -895,6 +1393,11 @@ function EnvCard({ e }: { e: CloudEnv }) {
                         {e.branch}
                     </Badge>
                 </div>
+                {e.instances.length === 0 && (
+                    <div className="text-xs text-muted-foreground">
+                        No compute reported
+                    </div>
+                )}
                 {e.instances.map((i) => (
                     <div
                         key={i.name}
@@ -908,7 +1411,10 @@ function EnvCard({ e }: { e: CloudEnv }) {
                                 {i.queue ? ` · ${i.queue}` : ''}
                             </span>
                             <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-                                {i.replicas} of {i.min}–{i.max}
+                                {i.replicas !== undefined
+                                    ? `${i.replicas} of `
+                                    : 'replicas '}
+                                {i.min}–{i.max}
                                 {i.scaling === 'auto' ? ' · autoscale' : ''}
                             </span>
                         </div>
@@ -919,7 +1425,8 @@ function EnvCard({ e }: { e: CloudEnv }) {
                             <div className="text-xs text-muted-foreground">
                                 Asleep · wakes on the next request
                             </div>
-                        ) : (
+                        ) : i.cpu === undefined ||
+                          i.mem === undefined ? null : (
                             <div className="grid grid-cols-2 gap-3">
                                 {(
                                     [

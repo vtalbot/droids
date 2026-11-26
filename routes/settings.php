@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Settings\CloudController;
 use App\Http\Controllers\Settings\GitHubController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
@@ -36,6 +37,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('settings/github/created', [GitHubController::class, 'created'])->name('github.app.created');
     Route::get('settings/github/installed', [GitHubController::class, 'installed'])->name('github.installed');
     Route::post('settings/github/sync', [GitHubController::class, 'sync'])->name('github.sync');
+
+    Route::get('settings/cloud', [CloudController::class, 'edit'])->name('cloud.edit');
+    Route::post('settings/cloud', [CloudController::class, 'store'])->name('cloud.store');
+    Route::delete('settings/cloud', [CloudController::class, 'destroy'])->name('cloud.destroy');
 
     Route::get('settings/workers', [WorkerController::class, 'edit'])->name('workers.edit');
     Route::post('settings/workers', [WorkerController::class, 'store'])->name('workers.store');

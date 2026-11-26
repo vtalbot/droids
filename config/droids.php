@@ -30,4 +30,9 @@ return [
         'git_host' => env('DROIDS_GIT_HOST', 'https://github.com'),
         'timeout' => (int) env('DROIDS_RUN_MINUTES', 60),
     ],
+
+    // Laravel Cloud API, read with the token saved in Settings > Laravel Cloud.
+    'cloud' => [
+        'url' => env('DROIDS_CLOUD_API', 'https://cloud.laravel.com/api'),
+    ],
 ];
