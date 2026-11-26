@@ -20,6 +20,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { PROVIDERS, ROLES, type Project, type Provider } from '@/factory/data';
+import { request } from '@/factory/api';
 import { DroidAvatar } from '@/factory/droid-avatar';
 import { cn } from '@/lib/utils';
 
@@ -325,6 +326,8 @@ export function AssembleDialog({
     );
 }
 
+type InstalledRepo = { repo: string; private: boolean; installation: number };
+
 export function ConnectDialog({
     open,
     onOpenChange,
@@ -332,11 +335,42 @@ export function ConnectDialog({
 }: {
     open: boolean;
     onOpenChange: (o: boolean) => void;
-    onConnect: (repo: string, board: string) => Promise<boolean>;
+    onConnect: (repo: string, installation: number | null) => Promise<boolean>;
 }) {
     const [repo, setRepo] = useState('');
-    const [board, setBoard] = useState('');
     const [busy, setBusy] = useState(false);
+    const [repos, setRepos] = useState<InstalledRepo[] | null>(null);
+    const [configured, setConfigured] = useState(true);
+    const [loadError, setLoadError] = useState('');
+
+    useEffect(() => {
+        if (!open) return;
+        let live = true;
+        setRepos(null);
+        setLoadError('');
+        request('GET', '/factory/github/repos')
+            .then((res) => {
+                if (!live) return;
+                const data = res as unknown as {
+                    configured: boolean;
+                    repos: InstalledRepo[];
+                };
+                setConfigured(data.configured);
+                setRepos(data.repos);
+            })
+            .catch((e: Error) => {
+                if (!live) return;
+                setLoadError(e.message);
+                setRepos([]);
+            });
+        return () => {
+            live = false;
+        };
+    }, [open]);
+
+    const picked = repos?.find((r) => r.repo === repo);
+    const manual = !configured || (repos !== null && repos.length === 0);
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[480px]">
@@ -346,12 +380,11 @@ export function ConnectDialog({
                         setBusy(true);
                         const ok = await onConnect(
                             repo.trim(),
-                            board.trim() || 'Roadmap',
+                            picked?.installation ?? null,
                         );
                         setBusy(false);
                         if (ok) {
                             setRepo('');
-                            setBoard('');
                             onOpenChange(false);
                         }
                     }}
@@ -360,30 +393,80 @@ export function ConnectDialog({
                     <DialogHeader>
                         <DialogTitle>Connect a repository</DialogTitle>
                         <DialogDescription>
-                            Link a GitHub repo and the GitHub Project board your
-                            droids will work from. Syncing issues and the board
-                            starts once the GitHub App is installed.
+                            Its issues, milestones, pull requests and checks
+                            become this project's board and roadmap, and stay in
+                            sync.
                         </DialogDescription>
                     </DialogHeader>
+                    {!configured && (
+                        <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
+                            The GitHub App isn't set up yet.{' '}
+                            <a
+                                href="/settings/github"
+                                className="font-medium underline"
+                            >
+                                Create it in Settings
+                            </a>{' '}
+                            to sync. You can still add the project now and link
+                            it later.
+                        </p>
+                    )}
+                    {loadError && (
+                        <p className="text-xs text-destructive">{loadError}</p>
+                    )}
                     <div className="grid gap-2">
                         <Label htmlFor="c-repo">Repository</Label>
-                        <Input
-                            id="c-repo"
-                            className="font-mono"
-                            value={repo}
-                            onChange={(e) => setRepo(e.target.value)}
-                            placeholder="owner/repo"
-                            required
-                        />
-                    </div>
-                    <div className="grid gap-2">
-                        <Label htmlFor="c-board">GitHub Project</Label>
-                        <Input
-                            id="c-board"
-                            value={board}
-                            onChange={(e) => setBoard(e.target.value)}
-                            placeholder="Roadmap"
-                        />
+                        {repos === null ? (
+                            <div className="h-9 animate-pulse rounded-md bg-muted" />
+                        ) : manual ? (
+                            <>
+                                <Input
+                                    id="c-repo"
+                                    className="font-mono"
+                                    value={repo}
+                                    onChange={(e) => setRepo(e.target.value)}
+                                    placeholder="owner/repo"
+                                    required
+                                />
+                                {configured && (
+                                    <p className="text-xs text-muted-foreground">
+                                        No repositories left to connect.{' '}
+                                        <a
+                                            href="/settings/github"
+                                            className="underline"
+                                        >
+                                            Give the App access to more
+                                        </a>
+                                        .
+                                    </p>
+                                )}
+                            </>
+                        ) : (
+                            <Select value={repo} onValueChange={setRepo}>
+                                <SelectTrigger
+                                    id="c-repo"
+                                    className="w-full font-mono"
+                                >
+                                    <SelectValue placeholder="Pick a repository" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {repos.map((r) => (
+                                        <SelectItem
+                                            key={r.repo}
+                                            value={r.repo}
+                                            className="font-mono"
+                                        >
+                                            {r.repo}
+                                            {r.private && (
+                                                <span className="ml-2 font-sans text-xs text-muted-foreground">
+                                                    private
+                                                </span>
+                                            )}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
                     </div>
                     <DialogFooter>
                         <Button
@@ -393,8 +476,10 @@ export function ConnectDialog({
                         >
                             Cancel
                         </Button>
-                        <Button type="submit" disabled={busy}>
-                            Connect
+                        <Button type="submit" disabled={busy || !repo.trim()}>
+                            {busy && picked
+                                ? 'Connecting and syncing'
+                                : 'Connect'}
                         </Button>
                     </DialogFooter>
                 </form>

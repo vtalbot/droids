@@ -15,6 +15,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $due_on
  * @property string $state
  * @property int $position
+ * @property int|null $github_number
  */
 class Milestone extends Model
 {

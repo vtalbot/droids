@@ -9,6 +9,8 @@ export type Project = {
     repo: string;
     board: string;
     color: string;
+    linked?: boolean;
+    synced?: string | null;
     milestone: string;
     due: string;
     done: number;
@@ -137,16 +139,23 @@ export type PR = {
     n: number;
     title: string;
     branch: string;
-    state: 'draft' | 'open' | 'approved' | 'changes' | 'merged';
+    state: 'draft' | 'open' | 'approved' | 'changes' | 'merged' | 'closed';
     add: number;
     del: number;
     commits: number;
     files: number;
-    checks: { name: string; state: CheckState; dur?: string }[];
+    checks: {
+        name: string;
+        state: CheckState;
+        dur?: string;
+        job?: number | null;
+        url?: string | null;
+    }[];
     reviews: {
         by: string;
         state: 'approved' | 'changes' | 'commented' | 'requested';
     }[];
+    url?: string | null;
 };
 
 export type Draft = {

@@ -18,6 +18,9 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property int|null $reviewer_id
  * @property string|null $engine
  * @property int $position
+ * @property int|null $github_id
+ * @property string $state
+ * @property string|null $url
  */
 class Task extends Model
 {

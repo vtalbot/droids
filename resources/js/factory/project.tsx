@@ -123,7 +123,6 @@ export function ProjectView(props: Props) {
                                 style={{ background: p.color }}
                             />
                             <span className="font-mono">{p.repo}</span>
-                            <span>· {p.board}</span>
                         </div>
                         <h1 className="text-3xl font-semibold tracking-tight text-balance md:text-4xl">
                             {headline(store, p)}
@@ -184,7 +183,7 @@ function headline(store: Store, p: P) {
         2;
     const left = p.total - p.done;
     const weeks = Math.ceil(left / Math.max(pace, 0.5));
-    return `${ms.name} is ${Math.round((p.done / p.total) * 100)}% done, ${weeks <= 3 ? 'on track' : 'at risk'} for ${ms.due}`;
+    return `${ms.name} is ${Math.round((p.total ? p.done / p.total : 0) * 100)}% done, ${weeks <= 3 ? 'on track' : 'at risk'} for ${ms.due}`;
 }
 
 function Kpi({
@@ -273,7 +272,7 @@ function Overview({ store, p }: Props & { p: P }) {
             <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border md:grid-cols-3 xl:grid-cols-6">
                 <Kpi
                     label="Milestone"
-                    value={`${Math.round((p.done / p.total) * 100)}%`}
+                    value={`${Math.round((p.total ? p.done / p.total : 0) * 100)}%`}
                     note={`${p.done} of ${p.total} · due ${p.due}`}
                 />
                 <Kpi
@@ -940,7 +939,7 @@ function Portfolio({ store, proj, setProject }: Props) {
                 </h1>
                 <p className="mt-1.5 text-muted-foreground">
                     {store.projects.length} projects, each linked to a GitHub
-                    repo, a GitHub Project and, where deployed, Laravel Cloud.
+                    repo and, where deployed, Laravel Cloud.
                 </p>
             </div>
             <div className="grid [grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr))] gap-4 p-4 md:p-6">
@@ -988,13 +987,18 @@ function Portfolio({ store, proj, setProject }: Props) {
                                         <span>{ms?.name ?? p.milestone}</span>
                                         <span className="text-muted-foreground tabular-nums">
                                             {Math.round(
-                                                (p.done / p.total) * 100,
+                                                (p.total
+                                                    ? p.done / p.total
+                                                    : 0) * 100,
                                             )}
                                             % · due {p.due}
                                         </span>
                                     </div>
                                     <Progress
-                                        value={(p.done / p.total) * 100}
+                                        value={
+                                            (p.total ? p.done / p.total : 0) *
+                                            100
+                                        }
                                         className="h-1.5"
                                     />
                                 </div>

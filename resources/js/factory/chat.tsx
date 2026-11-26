@@ -711,7 +711,7 @@ function Drafts({
         m.created = made;
         store.chats[`plan:${m.project}`]?.push({
             kind: 'agent',
-            text: `Created ${made.map((x) => `#${x}`).join(', ')} in the **Backlog** of ${p.board}. Move them to Ready when you want droids to pick them up.`,
+            text: `Created ${made.map((x) => `#${x}`).join(', ')} in the **Backlog** of ${p.name}. Move them to Ready when you want droids to pick them up.`,
         });
         toast.success(`${made.length} issues added to the Backlog`, {
             description: `${p.name} · ${d.unit} drafted them`,
@@ -722,7 +722,7 @@ function Drafts({
         <Card className="gap-3 py-4 shadow-none">
             <CardHeader className="px-4">
                 <CardTitle className="text-base">
-                    Draft issues for {p.board}
+                    Draft issues for {p.name}
                 </CardTitle>
                 <CardDescription>
                     {p.repo} · milestone {p.milestone}

@@ -6,6 +6,7 @@ import {
     GitBranchIcon,
     GitMergeIcon,
     GitPullRequestDraftIcon,
+    GitPullRequestClosedIcon,
     GitPullRequestIcon,
     LoaderCircleIcon,
     MessageSquareIcon,
@@ -71,6 +72,11 @@ export const PR_STATE: Record<
         label: 'Merged',
         cls: 'text-codex border-codex/40 bg-codex/10',
         Icon: GitMergeIcon,
+    },
+    closed: {
+        label: 'Closed',
+        cls: 'text-muted-foreground border-border',
+        Icon: GitPullRequestClosedIcon,
     },
 };
 export const CheckIcon = ({
@@ -184,35 +190,52 @@ export function TaskSheet({
                 ),
         );
     };
+    const pullUrl = (action: string) =>
+        `/factory/projects/${encodeURIComponent(pid)}/pulls/${pr?.n}/${action}`;
     const rerun = () => {
         if (!pr) return;
-        pr.checks.forEach((c) => {
-            if (c.state === 'fail') {
-                c.state = 'running';
-                c.dur = undefined;
-            }
+        const failed = pr.checks.filter((c) => c.state === 'fail');
+        failed.forEach((c) => {
+            c.state = 'running';
+            c.dur = undefined;
         });
         bump();
-        toast('Re-running failed checks');
+        if (p?.linked) {
+            void save('POST', pullUrl('rerun')).then((res) => {
+                if (!res) return;
+                const count = Number(res.rerun) || 0;
+                toast(
+                    count
+                        ? `Re-running ${count} failed job${count > 1 ? 's' : ''} on GitHub`
+                        : 'Nothing to re-run: these checks are not GitHub Actions jobs',
+                );
+            });
+            return;
+        }
+        toast('Re-running failed checks (preview)');
         setTimeout(() => {
-            pr.checks.forEach((c) => {
-                if (c.state === 'running') {
-                    c.state = 'pass';
-                    c.dur = '1m 04s';
-                }
+            failed.forEach((c) => {
+                c.state = 'pass';
+                c.dur = '1m 04s';
             });
             bump();
         }, 2500);
     };
     const merge = () => {
         if (!pr || !i) return;
-        // Simulated until the GitHub App can merge for real (phase 3).
         pr.state = 'merged';
         shift('done');
         if (r && r.task === i.n)
             Object.assign(r, { status: 'idle', task: null, step: '' });
+        if (p?.linked) {
+            void save('POST', pullUrl('merge')).then(
+                (res) => res && toast.success(`PR #${pr.n} squash-merged`),
+            );
+            return;
+        }
         toast.success(`PR #${pr.n} merged (preview)`, {
-            description: 'Merging on GitHub arrives with the GitHub App',
+            description:
+                'Connect this repository through the GitHub App to merge for real',
         });
     };
 
@@ -230,7 +253,6 @@ export function TaskSheet({
                                 <span className="font-mono">
                                     {p.repo}#{i.n}
                                 </span>
-                                <span>· {p.board}</span>
                             </div>
                             <SheetTitle className="text-xl leading-snug">
                                 {i.title}
