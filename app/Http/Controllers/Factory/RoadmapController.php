@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Factory;
 
+use App\GitHub\RepositoryWriter;
 use App\Models\Milestone;
 use App\Models\Project;
 use Illuminate\Http\JsonResponse;
@@ -9,7 +10,7 @@ use Illuminate\Http\Request;
 
 class RoadmapController extends Controller
 {
-    public function storeMilestone(Request $request, Project $project): JsonResponse
+    public function storeMilestone(Request $request, Project $project, RepositoryWriter $writer): JsonResponse
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:120'],
@@ -17,11 +18,19 @@ class RoadmapController extends Controller
             'goal' => ['nullable', 'string', 'max:300'],
         ]);
 
-        $project->milestones()->create([
+        $number = $project->isLinked()
+            ? $this->github(fn () => $writer->createMilestone($project, $data['name'], $data['due_on'] ?? null, $data['goal'] ?? null))
+            : null;
+
+        // A webhook for the new GitHub milestone may land first, so match on its number.
+        $milestone = $number
+            ? $project->milestones()->firstOrNew(['github_number' => $number])
+            : $project->milestones()->make();
+        $milestone->fill([
             ...$data,
-            'state' => 'planned',
-            'position' => (int) $project->milestones()->max('position') + 1,
-        ]);
+            'state' => $milestone->exists ? $milestone->state : 'planned',
+            'position' => $milestone->exists ? $milestone->position : (int) $project->milestones()->max('position') + 1,
+        ])->save();
 
         return $this->state([], 201);
     }

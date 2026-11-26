@@ -5,6 +5,7 @@ namespace App\Factory;
 use App\Models\Activity;
 use App\Models\ChatMessage;
 use App\Models\Droid;
+use App\Models\GithubApp;
 use App\Models\Milestone;
 use App\Models\Project;
 use App\Models\PullRequest;
@@ -71,6 +72,7 @@ class FactoryState
             'chats' => $this->chats($droidSlugs),
             'stats' => $projects->filter(fn (Project $p) => $p->stats !== null)->mapWithKeys(fn (Project $p) => [$p->slug => $p->stats]),
             'cloud' => $projects->mapWithKeys(fn (Project $p) => [$p->slug => $p->cloud_snapshot]),
+            'github' => ['configured' => GithubApp::current() !== null],
         ];
     }
 
@@ -88,6 +90,8 @@ class FactoryState
             'repo' => $p->repo,
             'board' => $p->board,
             'color' => $p->color,
+            'linked' => $p->isLinked(),
+            'synced' => $p->synced_at?->diffForHumans(),
             'milestone' => $milestone->name ?? 'No milestone',
             'due' => $milestone?->due_on?->format('M j') ?? '',
             'done' => $tasks->where('column', 'done')->count(),
@@ -138,6 +142,7 @@ class FactoryState
                 'files' => $pr->files,
                 'checks' => $pr->checks ?? [],
                 'reviews' => $pr->reviews ?? [],
+                'url' => $pr->url,
             ];
         }
 

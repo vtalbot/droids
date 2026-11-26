@@ -2,9 +2,12 @@
 
 use App\Http\Controllers\Factory;
 use App\Http\Controllers\FactoryController;
+use App\Http\Controllers\GitHubWebhookController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/hangar')->name('home');
+
+Route::post('github/webhook', GitHubWebhookController::class)->name('github.webhook');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('{view}', FactoryController::class)
@@ -21,6 +24,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('projects/{project:slug}/tasks/{number}/assign', [Factory\TaskController::class, 'assign'])->whereNumber('number')->name('tasks.assign');
         Route::post('projects/{project:slug}/milestones', [Factory\RoadmapController::class, 'storeMilestone'])->name('milestones.store');
         Route::post('milestones/{milestone}/features', [Factory\RoadmapController::class, 'storeFeature'])->name('features.store');
+
+        Route::get('github/repos', [Factory\GitHubController::class, 'repos'])->name('github.repos');
+        Route::post('projects/{project:slug}/sync', [Factory\GitHubController::class, 'sync'])->name('projects.sync');
+        Route::post('projects/{project:slug}/pulls/{number}/merge', [Factory\GitHubController::class, 'merge'])->whereNumber('number')->name('pulls.merge');
+        Route::post('projects/{project:slug}/pulls/{number}/rerun', [Factory\GitHubController::class, 'rerun'])->whereNumber('number')->name('pulls.rerun');
 
         Route::post('droids', [Factory\DroidController::class, 'store'])->name('droids.store');
         Route::patch('droids/{droid:slug}', [Factory\DroidController::class, 'update'])->name('droids.update');

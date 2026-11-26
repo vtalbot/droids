@@ -13,6 +13,7 @@ import {
     GaugeIcon,
     NotebookPenIcon,
     FolderKanbanIcon,
+    RefreshCwIcon,
 } from 'lucide-react';
 import { Head } from '@inertiajs/react';
 import { toast } from 'sonner';
@@ -73,6 +74,8 @@ import {
 } from '@/components/ui/tooltip';
 import { Shimmer } from '@/components/ai-elements/shimmer';
 import { cn } from '@/lib/utils';
+import { GithubMark } from '@/factory/logos';
+export { GithubMark };
 import {
     COLS,
     PROVIDERS,
@@ -124,6 +127,7 @@ export type Store = {
     roadmap: Record<string, Milestone[]>;
     cloud: Record<string, CloudApp | null>;
     stats: Record<string, Stats>;
+    github?: { configured: boolean };
 };
 export type View = 'hangar' | 'projects' | 'board' | 'droids' | 'subscriptions';
 const TITLES: Record<View, string> = {
@@ -133,19 +137,6 @@ const TITLES: Record<View, string> = {
     droids: 'Droids',
     subscriptions: 'Subscriptions',
 };
-
-export const GithubMark = ({ className }: { className?: string }) => (
-    <svg
-        viewBox="0 0 16 16"
-        className={cn('size-4', className)}
-        aria-hidden="true"
-    >
-        <path
-            fill="currentColor"
-            d="M8 0a8 8 0 0 0-2.5 15.6c.4 0 .5-.2.5-.4v-1.4c-2.2.5-2.7-1-2.7-1-.4-.9-.9-1.2-.9-1.2-.7-.5.1-.5.1-.5.8.1 1.2.8 1.2.8.7 1.3 1.9.9 2.3.7.1-.5.3-.9.5-1.1-1.8-.2-3.6-.9-3.6-4 0-.9.3-1.6.8-2.1-.1-.2-.4-1 .1-2.1 0 0 .7-.2 2.2.8a7.5 7.5 0 0 1 4 0c1.5-1 2.2-.8 2.2-.8.4 1.1.2 1.9.1 2.1.5.6.8 1.3.8 2.1 0 3.1-1.9 3.8-3.6 4 .3.3.6.8.6 1.5v2.2c0 .2.1.5.6.4A8 8 0 0 0 8 0z"
-        />
-    </svg>
-);
 
 const ago = (m: number) =>
     m < 1
@@ -211,6 +202,7 @@ export default function FactoryApp({
     };
     const [assembleOpen, setAssembleOpen] = useState(false);
     const [connectOpen, setConnectOpen] = useState(false);
+    const [syncing, setSyncing] = useState(false);
 
     // Views switch on the client so in-progress edits survive; the URL stays shareable.
     const push = (v: View, p: string) => {
@@ -446,7 +438,8 @@ export default function FactoryApp({
                                     </SidebarMenuItem>
                                     {store.projects.map((p) => {
                                         const pct = Math.round(
-                                            (p.done / p.total) * 100,
+                                            (p.total ? p.done / p.total : 0) *
+                                                100,
                                         );
                                         const active = store.droids.filter(
                                             (d) =>
@@ -624,6 +617,37 @@ export default function FactoryApp({
                             </span>
                         </div>
                         <div className="ml-auto flex items-center gap-2">
+                            {project !== 'all' && proj(project).linked && (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={syncing}
+                                    title={
+                                        proj(project).synced
+                                            ? `Synced ${proj(project).synced}`
+                                            : 'Not synced yet'
+                                    }
+                                    onClick={async () => {
+                                        setSyncing(true);
+                                        const res = await save(
+                                            'POST',
+                                            `/factory/projects/${encodeURIComponent(project)}/sync`,
+                                        );
+                                        setSyncing(false);
+                                        if (res)
+                                            toast.success(
+                                                `Synced ${proj(project).repo}`,
+                                            );
+                                    }}
+                                >
+                                    <RefreshCwIcon
+                                        className={cn(
+                                            syncing && 'animate-spin',
+                                        )}
+                                    />
+                                    <span className="max-sm:hidden">Sync</span>
+                                </Button>
+                            )}
                             <Button
                                 variant="outline"
                                 size="sm"
@@ -679,9 +703,8 @@ export default function FactoryApp({
                             />
                         )}
                         <p className="px-4 pb-8 text-xs text-muted-foreground md:px-6">
-                            Showing sample data until GitHub, the droid runners
-                            and Laravel Cloud are connected. Changes made here
-                            are not saved yet.
+                            Projects not linked to the GitHub App, droid runs
+                            and Laravel Cloud still show sample data.
                         </p>
                     </main>
                 </SidebarInset>
@@ -749,18 +772,21 @@ export default function FactoryApp({
                 <ConnectDialog
                     open={connectOpen}
                     onOpenChange={setConnectOpen}
-                    onConnect={async (repo, board) => {
+                    onConnect={async (repo, installation) => {
                         const res = await save('POST', '/factory/projects', {
                             repo,
-                            board,
+                            installation,
                         });
                         if (!res) return false;
                         setView('board');
                         setProject(res.project as string, 'board');
-                        toast.success(`Connected ${repo} with ${board}`, {
-                            description:
-                                'Board sync arrives with the GitHub App',
-                        });
+                        if (res.warning) toast.warning(res.warning as string);
+                        else
+                            toast.success(`Connected ${repo}`, {
+                                description: installation
+                                    ? 'Issues, PRs and checks are synced'
+                                    : 'Set up the GitHub App in Settings to sync',
+                            });
                         return true;
                     }}
                 />
@@ -1040,7 +1066,7 @@ function DroidCard({
             <CardContent className="grid gap-2.5 px-4">
                 {d.status === 'idle' ? (
                     <p className="text-sm text-muted-foreground">
-                        Docked and charged. Ready for a task from {p.board}.
+                        Docked and charged. Ready for a task from {p.name}.
                     </p>
                 ) : (
                     <>
@@ -1151,7 +1177,7 @@ function IssuePicker({
                             .map((p) => (
                                 <CommandGroup
                                     key={p.id}
-                                    heading={`${p.name} · ${p.board}`}
+                                    heading={`${p.name} · ${p.repo}`}
                                 >
                                     {list
                                         .filter((i) => i.project === p.id)
@@ -1295,7 +1321,10 @@ function Board({
     const list = store.issues.filter((i) => inProj(i.project));
     const p = project !== 'all' ? proj(project) : null;
     const totals = useMemo(
-        () => (p ? { pct: Math.round((p.done / p.total) * 100) } : null),
+        () =>
+            p
+                ? { pct: Math.round((p.total ? p.done / p.total : 0) * 100) }
+                : null,
         [p, p?.done, p?.total],
     );
     const drop = (col: ColKey) => {
@@ -1335,21 +1364,21 @@ function Board({
                             <GithubMark className="size-3.5" />
                             {p ? (
                                 <>
-                                    GitHub Project{' '}
-                                    <span className="font-medium text-foreground">
-                                        {p.board}
-                                    </span>{' '}
-                                    ·{' '}
                                     <span className="font-mono text-sm">
                                         {p.repo}
                                     </span>{' '}
-                                    · synced 1 min ago
+                                    ·{' '}
+                                    {p.linked
+                                        ? p.synced
+                                            ? `synced ${p.synced}`
+                                            : 'not synced yet'
+                                        : 'not linked to the GitHub App'}
                                 </>
                             ) : (
                                 <>
-                                    {store.projects.length} GitHub Projects
-                                    merged by Status. Drag cards, or pair a
-                                    builder with a reviewer.
+                                    {store.projects.length} repositories on one
+                                    board. Drag cards, or pair a builder with a
+                                    reviewer.
                                 </>
                             )}
                         </p>

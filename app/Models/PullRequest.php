@@ -11,12 +11,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $number
  * @property string $title
  * @property string $branch
+ * @property int|null $github_id
+ * @property string|null $head_sha
+ * @property string|null $url
  * @property string $state
  * @property int $additions
  * @property int $deletions
  * @property int $commits
  * @property int $files
- * @property list<array{name: string, state: string, dur?: string}>|null $checks
+ * @property list<array{name: string, state: string, dur?: string, job?: int|null, url?: string|null}>|null $checks
  * @property list<array{by: string, state: string}>|null $reviews
  */
 class PullRequest extends Model

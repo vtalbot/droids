@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Settings\GitHubController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
 /* @chisel-password-confirmation */
@@ -28,6 +29,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('user-password.update');
 
     Route::inertia('settings/appearance', 'settings/appearance')->name('appearance.edit');
+
+    Route::get('settings/github', [GitHubController::class, 'edit'])->name('github.edit');
+    Route::get('settings/github/create', [GitHubController::class, 'create'])->name('github.app.create');
+    Route::get('settings/github/created', [GitHubController::class, 'created'])->name('github.app.created');
+    Route::get('settings/github/installed', [GitHubController::class, 'installed'])->name('github.installed');
+    Route::post('settings/github/sync', [GitHubController::class, 'sync'])->name('github.sync');
 });
 
 /* @chisel-passkeys */
