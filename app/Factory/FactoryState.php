@@ -74,7 +74,8 @@ class FactoryState
                 'min' => (int) $a->created_at?->diffInMinutes(now(), true),
             ])->values(),
             'chats' => $this->chats($droidSlugs),
-            'stats' => $projects->filter(fn (Project $p) => $p->stats !== null)->mapWithKeys(fn (Project $p) => [$p->slug => $p->stats]),
+            // Sample projects carry stored stats; real ones are computed from their tasks, pull requests and runs.
+            'stats' => $projects->mapWithKeys(fn (Project $p) => [$p->slug => $p->stats ?? app(ProjectStats::class)->for($p)]),
             'cloud' => $projects->mapWithKeys(fn (Project $p) => [$p->slug => $p->cloud_snapshot]),
             'github' => ['configured' => GithubApp::current() !== null],
             'cloudConnected' => CloudConnection::current() !== null,

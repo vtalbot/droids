@@ -64,7 +64,7 @@ import {
     ChartTooltipContent,
     type ChartConfig,
 } from '@/components/ui/chart';
-import { COLS, type Milestone } from '@/factory/data';
+import { COLS, type Milestone, type Stats } from '@/factory/data';
 import { DroidAvatar } from '@/factory/droid-avatar';
 import { PrChip } from '@/factory/task-sheet';
 import { CloudPanel, cloudHealth } from '@/factory/cloud';
@@ -264,8 +264,29 @@ function ChartCard({
     );
 }
 
+/** Weeks of zeros for a project with no history yet, so the charts render empty instead of failing. */
+function emptyStats(p: P): Stats {
+    const weeks = Array.from({ length: 8 }, (_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - ((d.getDay() + 6) % 7) - (7 - i) * 7);
+        return d.toLocaleDateString('en', { month: 'short', day: 'numeric' });
+    });
+    return {
+        weeks,
+        burn: weeks.map(() => ({ scope: p.total, done: p.done })),
+        thru: weeks.map(() => ({ claude: 0, codex: 0 })),
+        cycle: weeks.map(() => 0),
+        spend: weeks.map(() => ({ claude: 0, codex: 0 })),
+        ci: 0,
+    };
+}
+
 function Overview({ store, p }: Props & { p: P }) {
-    const st = store.stats[p.id];
+    const st = store.stats[p.id] ?? emptyStats(p);
+    // Nothing closed or run yet: show dashes instead of zeros that look like data.
+    const fresh =
+        st.thru.every((w) => !w.claude && !w.codex) &&
+        st.spend.every((w) => !w.claude && !w.codex);
     const burn = st.burn.map((w, i) => ({ week: st.weeks[i], ...w }));
     const thru = st.thru.map((w, i) => ({ week: st.weeks[i], ...w }));
     const cyc = st.cycle.map((h, i) => ({ week: st.weeks[i], hours: h }));
@@ -288,25 +309,29 @@ function Overview({ store, p }: Props & { p: P }) {
                 <Kpi
                     label="Milestone"
                     value={`${Math.round((p.total ? p.done / p.total : 0) * 100)}%`}
-                    note={`${p.done} of ${p.total} · due ${p.due}`}
+                    note={`${p.done} of ${p.total}${p.due ? ` · due ${p.due}` : ''}`}
                 />
                 <Kpi
                     label="Closed this week"
-                    value={String(last.claude + last.codex)}
-                    delta={`${last.claude + last.codex - prev.claude - prev.codex >= 0 ? '+' : ''}${last.claude + last.codex - prev.claude - prev.codex}`}
+                    value={fresh ? '—' : String(last.claude + last.codex)}
+                    delta={
+                        fresh
+                            ? undefined
+                            : `${last.claude + last.codex - prev.claude - prev.codex >= 0 ? '+' : ''}${last.claude + last.codex - prev.claude - prev.codex}`
+                    }
                     good={last.claude + last.codex >= prev.claude + prev.codex}
                     note="vs last week"
                 />
                 <Kpi
                     label="PR cycle time"
-                    value={`${st.cycle[7]} h`}
-                    delta={`${st.cycle[7] - st.cycle[6]} h`}
+                    value={fresh ? '—' : `${st.cycle[7]} h`}
+                    delta={fresh ? undefined : `${st.cycle[7] - st.cycle[6]} h`}
                     good={st.cycle[7] <= st.cycle[6]}
                     note="median, open to merge"
                 />
                 <Kpi
                     label="Green on first push"
-                    value={`${Math.round(st.ci * 100)}%`}
+                    value={fresh ? '—' : `${Math.round(st.ci * 100)}%`}
                     note="CI runs this month"
                 />
                 <Kpi
@@ -320,6 +345,12 @@ function Overview({ store, p }: Props & { p: P }) {
                     note={health.note}
                 />
             </div>
+            {fresh && (
+                <p className="text-sm text-muted-foreground">
+                    No history yet: these charts fill in as droids close issues
+                    and open pull requests on this project.
+                </p>
+            )}
             <div className="grid gap-4 lg:grid-cols-2">
                 <ChartCard
                     title="Burnup"
