@@ -78,10 +78,16 @@ type ChatItemBody =
           project: string;
           added?: string[];
           items?: Proposal[];
+      }
+    | {
+          kind: 'design';
+          project: string;
+          changed: string[];
+          removed: string[];
       };
 /** A question a droid is answering on a worker, keyed by conversation. */
 export type Ask = {
-    kind: 'chat' | 'plan' | 'propose' | 'reflect';
+    kind: 'chat' | 'plan' | 'propose' | 'reflect' | 'design';
     status: 'queued' | 'running';
 };
 
@@ -101,7 +107,14 @@ export const PROVIDERS: Record<
     },
 };
 
-export const ROLES = ['Builder', 'Reviewer', 'Tester', 'Planner', 'Docs'];
+export const ROLES = [
+    'Builder',
+    'Reviewer',
+    'Designer',
+    'Tester',
+    'Planner',
+    'Docs',
+];
 
 export const STATUS: Record<
     Status,
@@ -161,6 +174,16 @@ export const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 export function nowSlot(date = new Date()) {
     return { day: (date.getDay() + 6) % 7, hour: date.getHours() };
 }
+
+// ---------- Design ----------
+/** A file of a project's design, as listed in the store (the Design tab loads the content). */
+export type DesignFile = {
+    path: string;
+    size: number;
+    /** Slug of the droid that last wrote it. */
+    by?: string | null;
+    updated?: string | null;
+};
 
 // ---------- Pull requests ----------
 export type CheckState = 'pass' | 'fail' | 'running' | 'pending';

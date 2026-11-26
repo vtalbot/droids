@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Run;
 use App\Models\Worker;
+use App\Runs\Design;
 use App\Runs\RunQueue;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -62,7 +63,13 @@ class WorkerController extends Controller
             'tokens_out' => ['nullable', 'integer', 'min:0'],
             'limited_until' => ['nullable', 'date'],
             'log' => ['nullable', 'string', 'max:200000'],
+            'design' => ['nullable', 'array', 'max:'.Design::MAX_FILES],
+            'design.*.path' => ['required', 'string', 'max:200'],
+            'design.*.content' => ['present', 'nullable', 'string', 'max:'.Design::MAX_BYTES],
         ]);
+        if (isset($data['design'])) {
+            $data['design'] = array_values(array_map(fn (array $f) => ['path' => (string) $f['path'], 'content' => (string) ($f['content'] ?? '')], $data['design']));
+        }
 
         $run = $this->queue->finish($run, $data);
 

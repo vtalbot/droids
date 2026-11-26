@@ -17,6 +17,7 @@ import {
     FlagIcon,
     LightbulbIcon,
     NotebookPenIcon,
+    PaletteIcon,
     PlusIcon,
     TrendingDownIcon,
     TrendingUpIcon,
@@ -67,6 +68,7 @@ import { COLS, type Milestone } from '@/factory/data';
 import { DroidAvatar } from '@/factory/droid-avatar';
 import { PrChip } from '@/factory/task-sheet';
 import { CloudPanel, cloudHealth } from '@/factory/cloud';
+import { DesignPanel } from '@/factory/design';
 import { cn } from '@/lib/utils';
 import { useSave } from '@/factory/api';
 import type { Store } from '@/factory/app';
@@ -81,6 +83,7 @@ type Props = {
     openTask: (k: string) => void;
     planWith: (pid: string) => void;
     propose: (pid: string) => void;
+    designWith: (pid: string) => void;
 };
 
 const engineCfg = {
@@ -153,6 +156,10 @@ export function ProjectView(props: Props) {
                         <FlagIcon />
                         Roadmap
                     </TabsTrigger>
+                    <TabsTrigger value="design">
+                        <PaletteIcon />
+                        Design
+                    </TabsTrigger>
                     <TabsTrigger value="cloud">
                         <CloudIcon />
                         Laravel Cloud
@@ -163,6 +170,14 @@ export function ProjectView(props: Props) {
                 </TabsContent>
                 <TabsContent value="roadmap" className="mt-4">
                     <Roadmap {...props} p={p} />
+                </TabsContent>
+                <TabsContent value="design" className="mt-4">
+                    <DesignPanel
+                        store={store}
+                        bump={props.bump}
+                        pid={p.id}
+                        designWith={props.designWith}
+                    />
                 </TabsContent>
                 <TabsContent value="cloud" className="mt-4">
                     <CloudPanel store={store} bump={props.bump} pid={p.id} />

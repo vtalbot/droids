@@ -12,7 +12,7 @@ use Illuminate\Validation\Rule;
 
 class DroidController extends Controller
 {
-    public const ROLES = ['Builder', 'Reviewer', 'Tester', 'Planner', 'Docs'];
+    public const ROLES = ['Builder', 'Reviewer', 'Designer', 'Tester', 'Planner', 'Docs'];
 
     public function store(Request $request): JsonResponse
     {

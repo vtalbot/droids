@@ -24,7 +24,7 @@ class Review
     /** Inline comments posted per review; the rest go in the body. */
     private const MAX_COMMENTS = 20;
 
-    public function __construct(private RepositoryWriter $writer) {}
+    public function __construct(private RepositoryWriter $writer, private Design $design) {}
 
     public function prompt(Run $run): string
     {
@@ -41,6 +41,7 @@ class Review
         if ($droid->instructions) {
             $lines = [...$lines, '', 'Standing instructions from your operator:', $droid->instructions];
         }
+        $lines = [...$lines, ...$this->design->promptLines($task?->project, 'review')];
         $failing = collect($pr->checks ?? [])->where('state', 'failure')->pluck('name')->implode(', ');
         if ($failing !== '') {
             $lines = [...$lines, '', "These CI checks are failing on the pull request: {$failing}."];

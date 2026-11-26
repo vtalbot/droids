@@ -73,6 +73,18 @@ Put a reviewer on a task and it reviews the pull request as soon as one is open:
 
 When the reviewer asks for changes, the builder gets a fix run on the same branch with the review notes. Its commit lands on the open pull request, and the reviewer looks again. After two rounds of fixes, the task waits for you.
 
+## Designer droids
+
+Assemble a droid with the **Designer** role, then open a project's **Design** tab and press **Ask a designer**. The designer works on your worker in a clone of the repository. It reads the code to learn the product, then writes the project's design into `.droids/design/`:
+
+- `system.md`: the design system, covering principles, color, type, spacing and components with their states.
+- `tokens.css`: the tokens as CSS custom properties.
+- `screens/<name>.html`: one self-contained HTML mockup per screen.
+
+It can only write inside that folder: Claude Code gets its read tools plus Edit and Write limited to it, and Codex runs in its workspace-write sandbox. When it finishes, the worker sends the folder back. Droids saves it on the project, and you can preview each file in the Design tab. Ask again to change it: the designer starts from the files already there.
+
+Every other run on the project gets the same files in `.droids/design/` in its clone. Builders, reviewers and planners are told to follow them. The folder is listed in the clone's `.git/info/exclude`, so a build never commits it.
+
 ## How a run picks a subscription
 
 - The worker only receives jobs for a subscription it is signed in to (or one that uses an API key).
