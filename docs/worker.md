@@ -67,6 +67,12 @@ The worker also answers conversations: chatting with a droid, planning sessions,
 
 Leave it running in a terminal tab, or keep it alive with something like `tmux`. `php artisan droids:work --once` runs a single job and exits, which is handy for a first test.
 
+## Reviewer droids
+
+Put a reviewer on a task and it reviews the pull request as soon as one is open: right away if the builder already opened it, otherwise when the builder's run finishes. The review runs read-only on the pull request's branch (Claude Code can also run `git diff`, `git log` and `git show`) and is posted on GitHub as a comment from the App, with inline notes. GitHub doesn't let the App approve or block a pull request it opened itself, so the verdict ("Looks good to merge" or "Changes requested") is in the comment and on the board.
+
+When the reviewer asks for changes, the builder gets a fix run on the same branch with the review notes. Its commit lands on the open pull request, and the reviewer looks again. After two rounds of fixes, the task waits for you.
+
 ## How a run picks a subscription
 
 - The worker only receives jobs for a subscription it is signed in to (or one that uses an API key).

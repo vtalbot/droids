@@ -130,7 +130,9 @@ class RepositorySync
         $checks = $pr->checks ?? [];
 
         if ($withDetails) {
-            $reviews = $this->reviews($http->get("/repos/{$owner}/{$repo}/pulls/{$pull['number']}/reviews", ['per_page' => 100])->json());
+            // Reviewer droids post as comments; their verdicts live only here, so keep them.
+            $droidReviews = array_values(array_filter($reviews, fn (array $r) => ! empty($r['droid'])));
+            $reviews = [...$this->reviews($http->get("/repos/{$owner}/{$repo}/pulls/{$pull['number']}/reviews", ['per_page' => 100])->json()), ...$droidReviews];
             $checks = $this->checks($http->get("/repos/{$owner}/{$repo}/commits/{$pull['head']['sha']}/check-runs", ['per_page' => 100])->json('check_runs') ?? []);
         }
 

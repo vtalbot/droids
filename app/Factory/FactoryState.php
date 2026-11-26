@@ -145,6 +145,7 @@ class FactoryState
             }
             $out[$slugs[$run->task->project_id].':'.$run->task->number] = [
                 'id' => $run->id,
+                'kind' => $run->kind,
                 'status' => $run->status,
                 'droid' => $run->droid->slug,
                 'subscription' => $run->subscription?->name,

@@ -41,6 +41,21 @@ class RepositoryWriter
         ]))->json('number');
     }
 
+    /**
+     * Post a review on a pull request, with optional inline comments on the new side of the diff.
+     *
+     * @param  list<array{path: string, line: int, body: string}>  $comments
+     */
+    public function createReview(Project $project, int $number, string $body, array $comments): void
+    {
+        [$owner, $repo] = $project->ownerAndName();
+        $this->github->forProject($project)->post("/repos/{$owner}/{$repo}/pulls/{$number}/reviews", array_filter([
+            'body' => $body,
+            'event' => 'COMMENT',
+            'comments' => array_map(fn (array $c) => [...$c, 'side' => 'RIGHT'], $comments) ?: null,
+        ]))->throw();
+    }
+
     /** Open a pull request for a droid's branch and mirror it on the task. */
     public function openPullRequest(Project $project, Task $task, string $branch, string $body): ?PullRequest
     {

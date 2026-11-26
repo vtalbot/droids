@@ -48,15 +48,22 @@ class Runner
             File::deleteDirectory($dir);
             File::ensureDirectoryExists(dirname($dir));
 
+            $kind = (string) ($job['kind'] ?? 'build');
             $build = self::isBuild($job);
             if (! empty($job['repo'])) {
                 $say("Cloning {$job['repo']}");
-                $this->git(['clone', '--filter=blob:none', ...($build ? [] : ['--depth=1']), $this->remote((string) $job['repo'], (string) $job['clone_token']), $dir], dirname($dir));
+                // Builds and reviews need history to diff against; conversations only read the latest code.
+                $depth = $build || $kind === 'review' ? [] : ['--depth=1'];
+                $this->git(['clone', '--filter=blob:none', ...$depth, $this->remote((string) $job['repo'], (string) $job['clone_token']), $dir], dirname($dir));
             } else {
                 File::ensureDirectoryExists($dir);
             }
-            if ($build) {
+            if ($kind === 'build') {
                 $this->git(['checkout', '-b', (string) $job['branch']], $dir);
+            } elseif ($kind === 'fix' || $kind === 'review') {
+                $this->git(['checkout', (string) $job['branch']], $dir); // the pull request's branch, from origin
+            }
+            if ($build) {
                 $this->git(['config', 'user.name', trim("{$job['droid']['unit']} {$job['droid']['name']}")], $dir);
                 $this->git(['config', 'user.email', 'droids@users.noreply.github.com'], $dir);
             }
@@ -161,22 +168,26 @@ class Runner
         $prompt = (string) $job['prompt'];
         $model = (string) $job['model'];
 
-        // Builds change the code; conversations (plan, propose, reflect, chat) may only read it.
+        // Builds and fixes change the code; reviews and conversations may only read it.
         if (self::isBuild($job)) {
             return $job['provider'] === 'codex'
                 ? [$bin, 'exec', '--json', '--model', $model, '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check', $prompt]
                 : [$bin, '-p', $prompt, '--model', $model, '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions'];
         }
 
+        $tools = ($job['kind'] ?? '') === 'review'
+            ? 'Read,Grep,Glob,LS,Bash(git diff:*),Bash(git log:*),Bash(git show:*)'
+            : 'Read,Grep,Glob,LS';
+
         return $job['provider'] === 'codex'
             ? [$bin, 'exec', '--json', '--model', $model, '--sandbox', 'read-only', '--skip-git-repo-check', $prompt]
-            : [$bin, '-p', $prompt, '--model', $model, '--output-format', 'stream-json', '--verbose', '--allowedTools', 'Read,Grep,Glob,LS'];
+            : [$bin, '-p', $prompt, '--model', $model, '--output-format', 'stream-json', '--verbose', '--allowedTools', $tools];
     }
 
     /** @param array<string, mixed> $job */
     private static function isBuild(array $job): bool
     {
-        return ($job['kind'] ?? 'build') === 'build';
+        return in_array($job['kind'] ?? 'build', ['build', 'fix'], true);
     }
 
     /**
@@ -211,7 +222,10 @@ class Runner
             $this->git(['commit', '-m', (string) $job['commit_message']], $dir);
         }
 
-        $base = trim($this->git(['rev-parse', '--abbrev-ref', 'origin/HEAD'], $dir));
+        // A fix adds to a branch that is already pushed; a new build is measured against the default branch.
+        $base = ($job['kind'] ?? 'build') === 'fix'
+            ? "origin/{$job['branch']}"
+            : trim($this->git(['rev-parse', '--abbrev-ref', 'origin/HEAD'], $dir));
         $ahead = (int) trim($this->git(['rev-list', '--count', "{$base}..HEAD"], $dir));
         if ($ahead === 0) {
             $say('No changes to push');
