@@ -67,12 +67,7 @@ Install Composer:
 curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 ```
 
-Install Node.js 22, the same version CI uses:
-
-```bash
-curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-apt install -y nodejs
-```
+Node.js is installed with nvm for the deploy user in the next step.
 
 ## 3. Create a deploy user and get the code
 
@@ -87,22 +82,44 @@ mkdir -p /var/www && chown deploy:www-data /var/www
 The repository is private, so give the server read access with a deploy key:
 
 ```bash
+sudo -u deploy mkdir -p -m 700 /home/deploy/.ssh
 sudo -u deploy ssh-keygen -t ed25519 -N "" -f /home/deploy/.ssh/id_ed25519
 cat /home/deploy/.ssh/id_ed25519.pub
 ```
 
-On GitHub, open **vtalbot/droids > Settings > Deploy keys > Add deploy key**, paste the key and leave **Allow write access** off. Then clone:
+On GitHub, open **vtalbot/droids > Settings > Deploy keys > Add deploy key**, paste the key and leave **Allow write access** off.
+
+From here on, work as the deploy user. A login shell loads nvm once it's installed:
 
 ```bash
-sudo -u deploy git clone git@github.com:vtalbot/droids.git /var/www/droids
+su - deploy
+```
+
+Install [nvm](https://github.com/nvm-sh/nvm). Check its releases page for the newest version number and use it in the URL:
+
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+source ~/.nvm/nvm.sh
+```
+
+Clone the app, then install the Node version it asks for. The repo's `.nvmrc` says `lts/*`, so `nvm install` picks the current LTS release, the same one CI tests on:
+
+```bash
+git clone git@github.com:vtalbot/droids.git /var/www/droids
+cd /var/www/droids
+nvm install
+nvm alias default node
+node -v
 ```
 
 ## 4. Configure the environment
 
+Still as `deploy`:
+
 ```bash
 cd /var/www/droids
-sudo -u deploy cp .env.example .env
-sudo -u deploy nano .env
+cp .env.example .env
+nano .env
 ```
 
 Change these values and leave the rest as they are:
@@ -138,15 +155,17 @@ Some notes on these values:
 
 ## 5. Install, build and migrate
 
+Still as `deploy`:
+
 ```bash
 cd /var/www/droids
-sudo -u deploy composer install --no-dev --optimize-autoloader
-sudo -u deploy php artisan key:generate
-sudo -u deploy touch database/database.sqlite
-sudo -u deploy php artisan migrate --force
-sudo -u deploy npm ci
-sudo -u deploy npm run build
-sudo -u deploy php artisan optimize
+composer install --no-dev --optimize-autoloader
+php artisan key:generate
+touch database/database.sqlite
+php artisan migrate --force
+npm ci
+npm run build
+php artisan optimize
 ```
 
 Run `migrate` without `--seed`. The seeders add a test user and the sample projects from the design prototype, which you don't want in production.
@@ -156,11 +175,14 @@ Back up `APP_KEY` from `.env` somewhere safe, such as a password manager. If it 
 Let PHP-FPM (`www-data`) write to storage, the cache and the database:
 
 ```bash
+cd /var/www/droids
 chgrp -R www-data storage bootstrap/cache database
 chmod -R ug+rwX storage bootstrap/cache database
 ```
 
 SQLite needs write access to the `database` folder as well as the file, because it creates a journal file next to the database.
+
+Type `exit` to go back to root for the next steps.
 
 ## 6. Nginx
 
@@ -313,8 +335,13 @@ Save this as `/var/www/droids/deploy.sh` (it is not tracked by git), make it exe
 set -euo pipefail
 cd /var/www/droids
 
+# nvm isn't loaded in non-interactive shells, so load it here.
+export NVM_DIR="$HOME/.nvm"
+source "$NVM_DIR/nvm.sh"
+
 php artisan down --retry=15
 git pull --ff-only origin main
+nvm install   # follows .nvmrc; moves to a new LTS when one is released
 composer install --no-dev --optimize-autoloader
 npm ci
 npm run build
