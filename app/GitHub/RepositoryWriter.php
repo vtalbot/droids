@@ -40,6 +40,23 @@ class RepositoryWriter
         ]))->json('number');
     }
 
+    /** Open a pull request for a droid's branch and mirror it on the task. */
+    public function openPullRequest(Project $project, Task $task, string $branch, string $body): ?PullRequest
+    {
+        [$owner, $repo] = $project->ownerAndName();
+        $http = $this->github->forProject($project);
+        $base = (string) $http->get("/repos/{$owner}/{$repo}")->json('default_branch');
+
+        $pull = $http->post("/repos/{$owner}/{$repo}/pulls", [
+            'title' => $task->title,
+            'head' => $branch,
+            'base' => $base,
+            'body' => $body,
+        ])->json();
+
+        return $this->sync->upsertPull($project, $pull);
+    }
+
     public function merge(Project $project, PullRequest $pr): void
     {
         [$owner, $repo] = $project->ownerAndName();

@@ -5,14 +5,18 @@ namespace App\Factory;
 use App\Models\Activity;
 use App\Models\Droid;
 use App\Models\Task;
+use App\Runs\RunQueue;
 use Illuminate\Support\Facades\DB;
 
 /**
  * Puts a droid on a task as its builder or reviewer. A builder moves the task
- * to In progress and releases the in-progress task it was working on before.
+ * to In progress, releases the in-progress task it was working on before and,
+ * on a linked repo, queues a run for a worker to pick up.
  */
 class AssignDroid
 {
+    public function __construct(private RunQueue $runs) {}
+
     public function __invoke(Task $task, Droid $droid, string $as): void
     {
         DB::transaction(function () use ($task, $droid, $as) {
@@ -33,14 +37,22 @@ class AssignDroid
                 }
                 $task->save();
 
+                $linked = $task->project->isLinked();
                 $droid->update([
                     'status' => 'working',
                     'task_id' => $task->id,
                     'project_id' => $task->project_id,
                     'progress' => 0,
                     'minutes' => 0,
-                    'step' => "Queued: clone {$task->project->repo} and read #{$task->number}",
+                    'step' => $linked
+                        ? "Queued: waiting for a worker to pick up #{$task->number}"
+                        : "Queued: clone {$task->project->repo} and read #{$task->number}",
                 ]);
+
+                // Real runs need the repo linked to the GitHub App: the worker clones and pushes with its token.
+                if ($linked) {
+                    $this->runs->queue($droid, $task);
+                }
             } else {
                 $task->update(['reviewer_id' => $droid->id]);
 

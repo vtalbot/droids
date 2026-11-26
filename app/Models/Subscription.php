@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
@@ -14,6 +15,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string|null $api_key
  * @property string $color
  * @property bool $enabled
+ * @property Carbon|null $limited_until
  * @property list<array{label: string, used: float, resets: string}>|null $windows
  * @property list<float>|null $week
  * @property float|null $spend_used
@@ -29,11 +31,22 @@ class Subscription extends Model
     {
         return [
             'enabled' => 'boolean',
+            'limited_until' => 'datetime',
             'api_key' => 'encrypted',
             'windows' => 'array',
             'week' => 'array',
             'spend_used' => 'float',
             'spend_cap' => 'float',
         ];
+    }
+
+    public function usesApiKey(): bool
+    {
+        return $this->api_key !== null;
+    }
+
+    public function isLimited(): bool
+    {
+        return $this->limited_until !== null && $this->limited_until->isFuture();
     }
 }

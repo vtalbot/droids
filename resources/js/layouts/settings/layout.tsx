@@ -31,6 +31,11 @@ const sidebarNavItems: NavItem[] = [
         href: '/settings/github',
         icon: null,
     },
+    {
+        title: 'Workers',
+        href: '/settings/workers',
+        icon: null,
+    },
 ];
 
 export default function SettingsLayout({ children }: PropsWithChildren) {

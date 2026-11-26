@@ -9,9 +9,11 @@ use App\Models\GithubApp;
 use App\Models\Milestone;
 use App\Models\Project;
 use App\Models\PullRequest;
+use App\Models\Run;
 use App\Models\Subscription;
 use App\Models\SubscriptionSchedule;
 use App\Models\Task;
+use App\Models\Worker;
 use Illuminate\Support\Collection;
 
 /**
@@ -73,6 +75,11 @@ class FactoryState
             'stats' => $projects->filter(fn (Project $p) => $p->stats !== null)->mapWithKeys(fn (Project $p) => [$p->slug => $p->stats]),
             'cloud' => $projects->mapWithKeys(fn (Project $p) => [$p->slug => $p->cloud_snapshot]),
             'github' => ['configured' => GithubApp::current() !== null],
+            'runs' => $this->runs($slugs),
+            'workers' => [
+                'total' => Worker::count(),
+                'online' => Worker::where('last_seen_at', '>', now()->subMinutes(2))->count(),
+            ],
         ];
     }
 
@@ -118,6 +125,34 @@ class FactoryState
                 ], fn ($v) => $v !== null))->values(),
             ])->values(),
         ];
+    }
+
+    /**
+     * The latest run of each task, keyed like PRs ("project:number").
+     *
+     * @param  Collection<int, string>  $slugs
+     * @return array<string, mixed>
+     */
+    private function runs(Collection $slugs): array
+    {
+        $out = [];
+        $latest = Run::with(['task', 'droid', 'subscription'])->whereIn('id', Run::selectRaw('max(id)')->groupBy('task_id'))->get();
+        foreach ($latest as $run) {
+            $out[$slugs[$run->task->project_id].':'.$run->task->number] = [
+                'id' => $run->id,
+                'status' => $run->status,
+                'droid' => $run->droid->slug,
+                'subscription' => $run->subscription?->name,
+                'branch' => $run->branch,
+                'pr' => $run->pr_number,
+                'error' => $run->error,
+                'cost' => $run->cost,
+                'started' => $run->started_at?->diffForHumans(),
+                'log' => $run->log ? mb_substr($run->log, -6000) : '',
+            ];
+        }
+
+        return $out;
     }
 
     /**

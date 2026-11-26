@@ -3,6 +3,7 @@
 use App\Http\Controllers\Settings\GitHubController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
+use App\Http\Controllers\Settings\WorkerController;
 /* @chisel-password-confirmation */
 use Illuminate\Auth\Middleware\RequirePassword;
 /* @end-chisel-password-confirmation */
@@ -35,6 +36,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('settings/github/created', [GitHubController::class, 'created'])->name('github.app.created');
     Route::get('settings/github/installed', [GitHubController::class, 'installed'])->name('github.installed');
     Route::post('settings/github/sync', [GitHubController::class, 'sync'])->name('github.sync');
+
+    Route::get('settings/workers', [WorkerController::class, 'edit'])->name('workers.edit');
+    Route::post('settings/workers', [WorkerController::class, 'store'])->name('workers.store');
+    Route::delete('settings/workers/{worker}', [WorkerController::class, 'destroy'])->name('workers.destroy');
 });
 
 /* @chisel-passkeys */
