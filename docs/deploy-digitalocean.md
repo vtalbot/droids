@@ -50,10 +50,10 @@ add-apt-repository -y ppa:ondrej/php
 apt update
 ```
 
-Then install PHP 8.5, the extensions Laravel needs, Nginx, SQLite and Git:
+Then install PHP 8.5, the extensions Laravel needs, Nginx, SQLite, Git, and `libatomic1` (recent Node builds need it, and the droplet image doesn't include it):
 
 ```bash
-apt install -y nginx git unzip sqlite3 \
+apt install -y nginx git unzip sqlite3 libatomic1 \
   php8.5-fpm php8.5-cli php8.5-sqlite3 php8.5-mbstring php8.5-xml \
   php8.5-curl php8.5-zip php8.5-intl php8.5-bcmath
 php -v   # should print PHP 8.5.x
