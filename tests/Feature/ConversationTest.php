@@ -211,4 +211,38 @@ class ConversationTest extends TestCase
         $this->postJson('/factory/droids/cog/ask', ['kind' => 'plan', 'text' => 'Plan'])->assertJsonValidationErrors('project');
         $this->assertSame(0, Run::count());
     }
+
+    public function test_recruiting_reads_the_crew_and_proposes_candidates(): void
+    {
+        $this->project->tasks()->first()->update(['labels' => ['ui', 'bug']]);
+        $this->ask('recruit', 'Suggest droids for this project.')->assertCreated()
+            ->assertJsonPath('store.asks.recruit:droids.kind', 'recruit');
+        $job = $this->claim();
+
+        $this->assertSame('recruit', $job['kind']);
+        $this->assertSame('vtalbot/droids', $job['repo']);
+        $this->assertStringContainsString('- CL-01 Cog: Planner on claude Opus 5.5', $job['prompt']);
+        $this->assertStringContainsString('Most common labels: ui (1), bug (1)', $job['prompt']);
+        $this->assertStringContainsString('Builder, Reviewer, Designer, Tester, Planner, Docs', $job['prompt']);
+        $this->assertStringContainsString('"candidates"', $job['prompt']);
+        $this->assertStringContainsString('do not change, commit or push', $job['prompt']);
+
+        $this->finish($job['id'], ['status' => 'succeeded', 'summary' => '{"message": "Four droids.", "candidates": [
+            {"name": "Iris", "role": "Designer", "provider": "claude", "model": "Opus 5.5", "pitch": "I design.", "why": "No design yet.", "instructions": "Keep it small."},
+            {"name": "Bolt", "role": "Wizard", "provider": "codex", "model": "GPT-9", "pitch": "I build."},
+            {"name": "", "role": "Builder"}
+        ]}']);
+
+        $chat = $this->getJson('/factory/state')->json('store.chats.recruit:droids');
+        $this->assertSame(['agent', 'user', 'agent', 'candidates'], array_column($chat, 'kind'));
+        $this->assertSame([
+            ['name' => 'Iris', 'role' => 'Designer', 'provider' => 'claude', 'model' => 'Opus 5.5', 'pitch' => 'I design.', 'why' => 'No design yet.', 'instructions' => 'Keep it small.'],
+            ['name' => 'Bolt', 'role' => 'Builder', 'provider' => 'codex', 'model' => 'GPT-5.1-Codex', 'pitch' => 'I build.', 'why' => '', 'instructions' => ''],
+        ], $chat[3]['items']);
+    }
+
+    public function test_recruiting_needs_a_project(): void
+    {
+        $this->postJson('/factory/droids/cog/ask', ['kind' => 'recruit', 'text' => 'Suggest'])->assertJsonValidationErrors('project');
+    }
 }

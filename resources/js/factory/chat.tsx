@@ -545,6 +545,22 @@ function ChatRow({
         return <Retro m={m} d={d} bump={bump} store={store} />;
     if (m.kind === 'proposals')
         return <Proposals m={m} store={store} bump={bump} proj={proj} />;
+    if (m.kind === 'candidates')
+        return (
+            <Task defaultOpen>
+                <TaskTrigger
+                    title={`Suggested droids for ${proj(m.project).name}: pick one in Assemble droid`}
+                />
+                <TaskContent>
+                    {m.items.map((c) => (
+                        <TaskItem key={`${c.name}-${c.role}`}>
+                            {c.name}, {c.role.toLowerCase()} on{' '}
+                            {PROVIDERS[c.provider].short} {c.model}
+                        </TaskItem>
+                    ))}
+                </TaskContent>
+            </Task>
+        );
     return <Drafts m={m} bump={bump} proj={proj} d={d} />;
 }
 

@@ -14,6 +14,12 @@ class DroidController extends Controller
 {
     public const ROLES = ['Builder', 'Reviewer', 'Designer', 'Tester', 'Planner', 'Docs'];
 
+    /** The models offered per engine, as the UI labels them. */
+    public const MODELS = [
+        'claude' => ['Opus 5.5', 'Sonnet 5.5', 'Haiku 5.5'],
+        'codex' => ['GPT-5.1-Codex', 'GPT-5.1-Codex-Mini'],
+    ];
+
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([

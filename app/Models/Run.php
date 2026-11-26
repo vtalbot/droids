@@ -40,7 +40,7 @@ class Run extends Model
     public const ACTIVE = ['queued', 'running'];
 
     /** Runs that answer in a conversation instead of building a task. */
-    public const ASK_KINDS = ['chat', 'plan', 'propose', 'reflect', 'design'];
+    public const ASK_KINDS = ['chat', 'plan', 'propose', 'reflect', 'design', 'recruit'];
 
     /** Runs a droid does on a task: build it, fix it after a review, or review its pull request. */
     public const TASK_KINDS = ['build', 'fix', 'review'];
@@ -89,7 +89,7 @@ class Run extends Model
         return $this->kind === 'review';
     }
 
-    /** Plan, propose, reflect, design and chat answer in a conversation instead of working on a task. */
+    /** Plan, propose, reflect, design, recruit and chat answer in a conversation instead of working on a task. */
     public function isConversation(): bool
     {
         return in_array($this->kind, self::ASK_KINDS, true);

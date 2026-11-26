@@ -19,8 +19,17 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { PROVIDERS, ROLES, type Project, type Provider } from '@/factory/data';
-import { request } from '@/factory/api';
+import { CheckIcon, SparklesIcon, UsersIcon } from 'lucide-react';
+import { Shimmer } from '@/components/ai-elements/shimmer';
+import {
+    PROVIDERS,
+    ROLES,
+    type Candidate,
+    type Project,
+    type Provider,
+} from '@/factory/data';
+import { request, useSave } from '@/factory/api';
+import type { Store } from '@/factory/app';
 import { DroidAvatar } from '@/factory/droid-avatar';
 import { cn } from '@/lib/utils';
 
@@ -59,7 +68,9 @@ export function AssembleDialog({
     nextSeed,
     nextUnit,
     defaultRole = 'Builder',
+    store,
 }: {
+    store: Store;
     open: boolean;
     onOpenChange: (o: boolean) => void;
     projects: Project[];
@@ -80,8 +91,19 @@ export function AssembleDialog({
         'Write tests first. Keep PRs under 400 lines. Ask before adding a dependency.',
     );
     const [busy, setBusy] = useState(false);
+    const [picked, setPicked] = useState<string | null>(null);
+    const pick = (c: Candidate, look: number) => {
+        setPicked(`${c.name}:${c.role}`);
+        setSeed(look);
+        setName(c.name);
+        setRole(c.role);
+        setProvider(c.provider);
+        setModel(c.model);
+        if (c.instructions) setInstructions(c.instructions);
+    };
     useEffect(() => {
         if (open) {
+            setPicked(null);
             setProject(defaultProject);
             setSeed(nextSeed);
             setName(NAMES[nextSeed % NAMES.length]);
@@ -126,6 +148,15 @@ export function AssembleDialog({
                             work on their own branch and open pull requests.
                         </DialogDescription>
                     </DialogHeader>
+
+                    {project && (
+                        <CrewSuggestions
+                            store={store}
+                            project={project}
+                            picked={picked}
+                            onPick={pick}
+                        />
+                    )}
 
                     <div className="blueprint flex items-center gap-4 rounded-xl border bg-muted/40 p-3">
                         <DroidAvatar
@@ -495,5 +526,197 @@ export function ConnectDialog({
                 </form>
             </DialogContent>
         </Dialog>
+    );
+}
+
+/** Ready-made droids for a project with no crew yet, when nobody can run a suggestion. */
+const STARTERS: Candidate[] = [
+    {
+        name: 'Bolt',
+        role: 'Builder',
+        provider: 'codex',
+        model: 'GPT-5.1-Codex',
+        pitch: "I'm Bolt. Hand me a clear issue and I'll come back with a small, tested pull request.",
+        why: 'Every project needs someone turning ready issues into code.',
+        instructions:
+            'Write tests first. Keep PRs under 400 lines. Ask before adding a dependency.',
+    },
+    {
+        name: 'Lumen',
+        role: 'Reviewer',
+        provider: 'claude',
+        model: 'Sonnet 5.5',
+        pitch: "I'm Lumen. I read every pull request like I'll maintain it, and I only block on real problems.",
+        why: 'A reviewer catches what the builder missed before it reaches you.',
+        instructions:
+            'Check the change solves the issue and has tests. Flag risky migrations and missing error handling.',
+    },
+    {
+        name: 'Atlas',
+        role: 'Planner',
+        provider: 'claude',
+        model: 'Opus 5.5',
+        pitch: "I'm Atlas. I turn a goal into issues one droid can finish in a day, and I keep the roadmap honest.",
+        why: 'A planner keeps the board stocked and can suggest the rest of the crew later.',
+        instructions:
+            'Draft small issues with acceptance criteria. Pick the engine for each. Never duplicate an open issue.',
+    },
+    {
+        name: 'Iris',
+        role: 'Designer',
+        provider: 'claude',
+        model: 'Opus 5.5',
+        pitch: "I'm Iris. I write the design system and screens that the builders follow.",
+        why: 'A shared design keeps every droid’s UI work consistent.',
+        instructions:
+            'Start from what the product already looks like. Keep the system small: a few colors, one type scale, the components the screens need.',
+    },
+];
+
+/** Candidates the planner proposes for a project, or starters when there is no droid to ask. */
+function CrewSuggestions({
+    store,
+    project,
+    picked,
+    onPick,
+}: {
+    store: Store;
+    project: string;
+    picked: string | null;
+    onPick: (c: Candidate, seed: number) => void;
+}) {
+    const save = useSave();
+    const [sending, setSending] = useState(false);
+    const key = `recruit:${project}`;
+    const ask = store.asks?.[key];
+    const chat = store.chats[key] ?? [];
+    const lastCards = [...chat].reverse().find((i) => i.kind === 'candidates');
+    // The answer to the latest request: cards, or a message saying why there are none.
+    const lastAsk = chat.map((i) => i.kind).lastIndexOf('user');
+    const answer = lastAsk >= 0 ? chat.slice(lastAsk + 1) : [];
+    const note = answer.find((i) => i.kind === 'agent');
+    const failed =
+        !ask &&
+        note?.kind === 'agent' &&
+        !answer.some((i) => i.kind === 'candidates')
+            ? note.text
+            : null;
+    const recruiter =
+        store.droids.find(
+            (d) => d.project === project && d.role === 'Planner',
+        ) ??
+        store.droids.find((d) => d.role === 'Planner') ??
+        store.droids.find((d) => d.project === project) ??
+        store.droids[0];
+    const thinking = sending || !!ask;
+    const items =
+        lastCards?.kind === 'candidates'
+            ? lastCards.items
+            : recruiter
+              ? []
+              : STARTERS;
+
+    const suggest = async () => {
+        if (!recruiter || thinking) return;
+        setSending(true);
+        await save(
+            'POST',
+            `/factory/droids/${encodeURIComponent(recruiter.id)}/ask`,
+            {
+                kind: 'recruit',
+                project,
+                text: 'Suggest droids for this project.',
+            },
+        );
+        setSending(false);
+    };
+
+    return (
+        <div className="grid gap-3 rounded-xl border p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 text-sm font-medium">
+                        <UsersIcon className="size-4" />
+                        {recruiter ? 'Suggested crew' : 'Starter crew'}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                        {recruiter
+                            ? `${recruiter.unit} ${recruiter.name} reads the repo, the issues and the crew, then proposes droids. Pick one to fill in the form.`
+                            : 'Pick one to fill in the form. Once a droid exists, it can suggest a crew from the repo.'}
+                    </p>
+                </div>
+                {recruiter && (
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={thinking}
+                        onClick={() => void suggest()}
+                    >
+                        <SparklesIcon />
+                        {items.length ? 'Suggest again' : 'Suggest a crew'}
+                    </Button>
+                )}
+            </div>
+            {thinking && (
+                <Shimmer className="text-sm">
+                    {ask?.status === 'running'
+                        ? `${recruiter?.unit} is reading the project…`
+                        : store.workers?.online
+                          ? 'Waiting for your worker to pick this up…'
+                          : 'No worker is online. Start php artisan droids:work to get suggestions…'}
+                </Shimmer>
+            )}
+            {!thinking && failed && (
+                <p className="text-sm text-muted-foreground">{failed}</p>
+            )}
+            {items.length > 0 && (
+                <div className="grid gap-2 sm:grid-cols-2">
+                    {items.map((c, n) => {
+                        const on = picked === `${c.name}:${c.role}`;
+                        return (
+                            <button
+                                type="button"
+                                key={`${c.name}-${n}`}
+                                onClick={() => onPick(c, n + 3)}
+                                aria-pressed={on}
+                                className={cn(
+                                    'grid gap-1.5 rounded-lg border p-3 text-left text-sm hover:bg-accent',
+                                    on && 'border-ring bg-accent',
+                                )}
+                            >
+                                <span className="flex items-center gap-2">
+                                    <DroidAvatar
+                                        provider={c.provider}
+                                        status="idle"
+                                        seed={n + 3}
+                                        className="size-8"
+                                    />
+                                    <span className="min-w-0 leading-tight">
+                                        <span className="block font-medium">
+                                            {c.name}
+                                        </span>
+                                        <span className="block text-xs text-muted-foreground">
+                                            {c.role} ·{' '}
+                                            {PROVIDERS[c.provider].short}{' '}
+                                            {c.model}
+                                        </span>
+                                    </span>
+                                    {on && (
+                                        <CheckIcon className="ml-auto size-4" />
+                                    )}
+                                </span>
+                                <span>{c.pitch}</span>
+                                {c.why && (
+                                    <span className="text-xs text-muted-foreground">
+                                        {c.why}
+                                    </span>
+                                )}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
     );
 }
