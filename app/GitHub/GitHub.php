@@ -58,6 +58,15 @@ class GitHub
         });
     }
 
+    /** A new token, not the cached one: a worker pushing after a long run needs the full hour. */
+    public function freshInstallationToken(int $installationId): string
+    {
+        $token = (string) $this->asApp()->send('POST', "/app/installations/{$installationId}/access_tokens")->json('token');
+        Cache::put("github.installation-token.{$installationId}", $token, now()->addMinutes(50));
+
+        return $token;
+    }
+
     public function forInstallation(int $installationId): PendingRequest
     {
         return $this->request()->withToken($this->installationToken($installationId));

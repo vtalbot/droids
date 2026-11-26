@@ -386,6 +386,10 @@ The App is private, so only your account can install it.
 - **The repository list in Connect repo is empty** when the App is not installed on any repo yet, or every installed repo is already connected. Use **Change repository access** in Settings > GitHub.
 - **If you move to a new domain**, update the Webhook URL, Callback URL and Setup URL in the App's settings on GitHub, and update `APP_URL`.
 
+### Run the droids
+
+The droids themselves run on your own computer, not on the droplet. Follow [worker.md](worker.md) to set one up.
+
 ## 11. Deploying updates
 
 Save this as `/var/www/droids/deploy.sh` (it is not tracked by git), make it executable with `chmod +x`, and run it as `deploy` after each merge to `main`:

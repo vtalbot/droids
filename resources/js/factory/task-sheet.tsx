@@ -42,7 +42,7 @@ import { DroidAvatar } from '@/factory/droid-avatar';
 import { EngineLogo } from '@/factory/logos';
 import { cn } from '@/lib/utils';
 import { useSave } from '@/factory/api';
-import type { Store } from '@/factory/app';
+import type { Run, Store } from '@/factory/app';
 
 export const PR_STATE: Record<
     PR['state'],
@@ -160,6 +160,7 @@ export function TaskSheet({
     const [pid, n] = issueKey ? issueKey.split(':') : ['', ''];
     const i = store.issues.find((x) => x.project === pid && x.n === +n);
     const pr = issueKey ? store.prs[issueKey] : undefined;
+    const run = issueKey ? store.runs?.[issueKey] : undefined;
     const p = i ? proj(i.project) : undefined;
     const who = (id?: string) => store.droids.find((d) => d.id === id);
     const b = who(i?.builder),
@@ -343,6 +344,8 @@ export function TaskSheet({
                                     </div>
                                 ))}
                             </div>
+
+                            {run && <RunPanel run={run} />}
 
                             <Separator />
 
@@ -584,5 +587,60 @@ export function TaskSheet({
                 )}
             </SheetContent>
         </Sheet>
+    );
+}
+
+const RUN_STATE: Record<Run['status'], { label: string; cls: string }> = {
+    queued: {
+        label: 'Waiting for a worker',
+        cls: 'text-needs border-needs/40',
+    },
+    running: { label: 'Running', cls: 'text-working border-working/40' },
+    succeeded: { label: 'Done', cls: 'text-done border-done/40' },
+    failed: { label: 'Failed', cls: 'text-blocked border-blocked/40' },
+    cancelled: { label: 'Cancelled', cls: 'text-muted-foreground' },
+};
+
+function RunPanel({ run }: { run: Run }) {
+    const st = RUN_STATE[run.status];
+    return (
+        <section className="grid gap-2" aria-label="Droid run">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="font-medium">Droid run</span>
+                <Badge variant="outline" className={st.cls}>
+                    {st.label}
+                </Badge>
+                {run.subscription && (
+                    <span className="text-xs text-muted-foreground">
+                        on {run.subscription}
+                    </span>
+                )}
+                {run.started && (
+                    <span className="text-xs text-muted-foreground">
+                        · started {run.started}
+                    </span>
+                )}
+                {run.cost > 0 && (
+                    <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+                        ${run.cost.toFixed(2)}
+                    </span>
+                )}
+            </div>
+            {run.error && (
+                <p className="rounded-md border border-blocked/40 bg-blocked/5 px-3 py-2 text-xs">
+                    {run.error}
+                </p>
+            )}
+            {run.log && (
+                <details className="rounded-md border">
+                    <summary className="cursor-pointer px-3 py-2 text-xs text-muted-foreground">
+                        Log
+                    </summary>
+                    <pre className="max-h-72 overflow-auto border-t bg-muted/40 p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
+                        {run.log}
+                    </pre>
+                </details>
+            )}
+        </section>
     );
 }

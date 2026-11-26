@@ -2,6 +2,7 @@
 
 use App\GitHub\RepositorySync;
 use App\Models\Project;
+use App\Runs\RunQueue;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -32,3 +33,10 @@ Artisan::command('github:sync {project? : Project slug; all linked projects when
 })->purpose('Pull issues, milestones, pull requests and checks from GitHub');
 
 Schedule::command('github:sync')->everyFiveMinutes()->withoutOverlapping();
+
+Artisan::command('droids:sweep', function (RunQueue $runs) {
+    $count = $runs->sweep();
+    $this->info($count ? "Marked {$count} stalled run(s) as failed." : 'No stalled runs.');
+})->purpose('Fail droid runs whose worker stopped reporting');
+
+Schedule::command('droids:sweep')->everyFiveMinutes();

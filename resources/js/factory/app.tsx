@@ -128,6 +128,20 @@ export type Store = {
     cloud: Record<string, CloudApp | null>;
     stats: Record<string, Stats>;
     github?: { configured: boolean };
+    runs?: Record<string, Run>;
+    workers?: { total: number; online: number };
+};
+export type Run = {
+    id: number;
+    status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+    droid: string;
+    subscription: string | null;
+    branch: string | null;
+    pr: number | null;
+    error: string | null;
+    cost: number;
+    started: string | null;
+    log: string;
 };
 export type View = 'hangar' | 'projects' | 'board' | 'droids' | 'subscriptions';
 const TITLES: Record<View, string> = {
@@ -227,6 +241,26 @@ export default function FactoryApp({
         addEventListener('popstate', f);
         return () => removeEventListener('popstate', f);
     }, []);
+
+    // While droids run on a worker, pull their progress from the server.
+    useEffect(() => {
+        const live = () =>
+            Object.values(store.runs ?? {}).some(
+                (r) => r.status === 'queued' || r.status === 'running',
+            );
+        const t = setInterval(() => {
+            if (document.hidden || !live()) return;
+            request('GET', '/factory/state')
+                .then((res) => {
+                    applyServerStore(store, res.store);
+                    bump();
+                })
+                .catch(() => {
+                    /* offline: try again on the next tick */
+                });
+        }, 8000);
+        return () => clearInterval(t);
+    }, [store]);
 
     // Keep "x min ago" labels fresh.
     useEffect(() => {
