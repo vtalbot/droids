@@ -61,7 +61,9 @@ Subscriptions that use an API key need no login: the server sends the key with t
 php artisan droids:work
 ```
 
-It prints the subscriptions it is signed in to, then polls the server every 15 seconds. Settings > Workers shows it as online. Assign a builder to a task on a linked project and the worker picks it up: the droid's step and a live log appear on the task.
+It prints the subscriptions it is signed in to, then polls the server every 5 seconds. Settings > Workers shows it as online. Assign a builder to a task on a linked project and the worker picks it up: the droid's step and a live log appear on the task.
+
+The worker also answers conversations: chatting with a droid, planning sessions, "what's next" proposals and Reflect. These run read-only in a shallow clone (Claude Code with only its Read, Grep and Glob tools, Codex in its read-only sandbox), and they go ahead of queued builds. The worker does one job at a time, so a question waits while a build is running.
 
 Leave it running in a terminal tab, or keep it alive with something like `tmux`. `php artisan droids:work --once` runs a single job and exits, which is handy for a first test.
 

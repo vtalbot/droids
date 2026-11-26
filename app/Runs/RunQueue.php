@@ -5,7 +5,9 @@ namespace App\Runs;
 use App\GitHub\GitHub;
 use App\GitHub\RepositoryWriter;
 use App\Models\Activity;
+use App\Models\ChatMessage;
 use App\Models\Droid;
+use App\Models\Project;
 use App\Models\Run;
 use App\Models\Subscription;
 use App\Models\Task;
@@ -29,6 +31,7 @@ class RunQueue
         private GitHub $github,
         private RepositoryWriter $writer,
         private Prompt $prompt,
+        private Conversation $conversation,
     ) {}
 
     public function queue(Droid $droid, Task $task): Run
@@ -46,8 +49,39 @@ class RunQueue
 
     public function cancelFor(Droid $droid, string $reason): void
     {
-        Run::where('droid_id', $droid->id)->whereIn('status', Run::ACTIVE)
+        Run::where('droid_id', $droid->id)->where('kind', 'build')->whereIn('status', Run::ACTIVE)
             ->update(['status' => 'cancelled', 'error' => $reason, 'finished_at' => now()]);
+    }
+
+    /**
+     * Record what the person said in a conversation and queue the droid's answer.
+     * A newer question in the same conversation replaces one still waiting.
+     */
+    public function ask(Droid $droid, string $kind, ?Project $project, string $text, ?string $intro = null): Run
+    {
+        $topic = Conversation::topic($kind, $droid, $project);
+        $stored = Conversation::storedTopic($topic);
+
+        return DB::transaction(function () use ($droid, $kind, $project, $text, $intro, $topic, $stored) {
+            Run::where('topic', $topic)->whereIn('status', Run::ACTIVE)
+                ->update(['status' => 'cancelled', 'error' => 'Replaced by a newer question', 'finished_at' => now()]);
+
+            $fresh = ! ChatMessage::where('droid_id', $droid->id)->where('topic', $stored)->exists();
+            if ($fresh && $intro !== null && $intro !== '') {
+                ChatMessage::create(['droid_id' => $droid->id, 'topic' => $stored, 'kind' => 'agent', 'payload' => ['text' => $intro]]);
+            }
+            ChatMessage::create(['droid_id' => $droid->id, 'topic' => $stored, 'kind' => 'user', 'payload' => ['text' => $text]]);
+
+            return Run::create([
+                'droid_id' => $droid->id,
+                // Reflect works from the droid's history, so it skips the clone.
+                'project_id' => $kind === 'reflect' ? null : ($project->id ?? $droid->project_id),
+                'kind' => $kind,
+                'topic' => $topic,
+                'input' => $text,
+                'status' => 'queued',
+            ]);
+        });
     }
 
     /**
@@ -60,10 +94,12 @@ class RunQueue
     {
         $worker->forceFill(['last_seen_at' => now(), 'subscriptions' => $signedIn])->save();
 
-        $runs = Run::with(['droid', 'task.project.installation'])->where('status', 'queued')->orderBy('id')->limit(20)->get();
+        // Conversations go first: someone is waiting on the answer.
+        $runs = Run::with(['droid', 'task.project.installation', 'project.installation'])->where('status', 'queued')
+            ->orderByRaw("kind = 'build'")->orderBy('id')->limit(20)->get();
         foreach ($runs as $run) {
             $subscription = $this->picker->pick($run->droid->provider, $signedIn);
-            if (! $subscription || ! $run->task->project->isLinked()) {
+            if (! $subscription || ($run->isBuild() && ! $run->task?->project->isLinked())) {
                 continue;
             }
 
@@ -80,8 +116,10 @@ class RunQueue
                 continue; // another worker got it first
             }
 
-            $run->refresh()->load(['droid', 'task.project.installation', 'subscription']);
-            $run->droid->update(['status' => 'working', 'step' => "Cloning {$run->task->project->repo}", 'progress' => 0.05]);
+            $run->refresh()->load(['droid', 'task.project.installation', 'project.installation', 'subscription']);
+            if ($run->isBuild()) {
+                $run->droid->update(['status' => 'working', 'step' => "Cloning {$this->projectOf($run)?->repo}", 'progress' => 0.05]);
+            }
 
             return $this->payload($run, $subscription);
         }
@@ -92,14 +130,15 @@ class RunQueue
     /** @return array<string, mixed> */
     private function payload(Run $run, Subscription $subscription): array
     {
-        $project = $run->task->project;
-        $installation = $project->installation->installation_id ?? 0;
+        $project = $this->projectOf($run);
+        $linked = $project !== null && $project->isLinked();
 
         return [
             'id' => $run->id,
-            'repo' => $project->repo,
+            'kind' => $run->kind,
+            'repo' => $linked ? $project->repo : null,
             'branch' => $run->branch,
-            'clone_token' => $this->github->freshInstallationToken($installation),
+            'clone_token' => $linked ? $this->github->freshInstallationToken($project->installation->installation_id ?? 0) : null,
             'provider' => $run->droid->provider,
             'model' => $this->model($run->droid),
             'subscription' => [
@@ -107,10 +146,16 @@ class RunQueue
                 'name' => $subscription->name,
                 'api_key' => $subscription->api_key,
             ],
-            'prompt' => $this->prompt->build($run),
-            'commit_message' => "feat: {$run->task->title} (#{$run->task->number})",
+            'prompt' => $run->isBuild() ? $this->prompt->build($run) : $this->conversation->prompt($run),
+            'commit_message' => $run->task ? "feat: {$run->task->title} (#{$run->task->number})" : null,
             'droid' => ['name' => $run->droid->name, 'unit' => $run->droid->unit],
         ];
+    }
+
+    /** The project a run works in: its task's for a build, its own for a conversation. */
+    private function projectOf(Run $run): ?Project
+    {
+        return $run->task->project ?? $run->project;
     }
 
     /** Map the model label shown in the UI to the CLI's model name. */
@@ -130,7 +175,7 @@ class RunQueue
     /** A new push token for a run that is still going. */
     public function token(Run $run): string
     {
-        return $this->github->freshInstallationToken($run->task->project->installation->installation_id ?? 0);
+        return $this->github->freshInstallationToken($this->projectOf($run)?->installation->installation_id ?? 0);
     }
 
     public function progress(Run $run, ?string $step, ?float $progress, ?string $log): void
@@ -141,6 +186,9 @@ class RunQueue
         $run->heartbeat_at = now();
         $run->save();
         $run->worker?->forceFill(['last_seen_at' => now()])->save();
+        if (! $run->isBuild()) {
+            return;
+        }
 
         $run->droid->update(array_filter([
             'step' => $step !== null ? Str::limit($step, 180) : null,
@@ -155,7 +203,7 @@ class RunQueue
     public function finish(Run $run, array $result): Run
     {
         return DB::transaction(function () use ($run, $result) {
-            $run->load(['droid', 'task.project', 'subscription']);
+            $run->load(['droid', 'task.project', 'project', 'subscription']);
             if (! empty($result['log'])) {
                 $run->appendLog($result['log']);
             }
@@ -175,7 +223,9 @@ class RunQueue
                 default => $this->failed($run, $result['error'] ?? 'The run failed.'),
             };
 
-            $droid->minutes = (int) $run->started_at?->diffInMinutes(now(), true);
+            if ($run->isBuild()) {
+                $droid->minutes = (int) $run->started_at?->diffInMinutes(now(), true);
+            }
             $droid->save();
             $run->save();
 
@@ -194,14 +244,25 @@ class RunQueue
         }
 
         $run->fill(['status' => 'queued', 'worker_id' => null, 'subscription_id' => null, 'started_at' => null, 'error' => $error]);
+        if (! $run->isBuild()) {
+            return;
+        }
         $run->droid->fill(['status' => 'working', 'step' => "{$run->subscription?->name} hit its limit, waiting for another subscription", 'progress' => 0]);
     }
 
     private function succeeded(Run $run, bool $pushed): void
     {
         $run->fill(['status' => 'succeeded', 'finished_at' => now()]);
+        if (! $run->isBuild()) {
+            $this->conversation->answer($run);
+
+            return;
+        }
         $droid = $run->droid;
         $task = $run->task;
+        if (! $task) {
+            return;
+        }
 
         if (! $pushed) {
             $droid->fill(['status' => 'needs', 'step' => Str::limit('Finished without changes: '.($run->summary ?: 'nothing to commit'), 180), 'progress' => 1]);
@@ -222,8 +283,13 @@ class RunQueue
     private function failed(Run $run, string $error): void
     {
         $run->fill(['status' => 'failed', 'error' => Str::limit($error, 2000), 'finished_at' => now()]);
+        if (! $run->isBuild()) {
+            $this->conversation->failed($run, Str::limit($error, 500));
+
+            return;
+        }
         $run->droid->fill(['status' => 'blocked', 'step' => Str::limit($error, 180)]);
-        Activity::create(['droid_id' => $run->droid_id, 'text' => "Blocked on #{$run->task->number}: ".Str::limit($error, 120)]);
+        Activity::create(['droid_id' => $run->droid_id, 'text' => 'Blocked on #'.($run->task->number ?? '?').': '.Str::limit($error, 120)]);
     }
 
     /** Fail runs whose worker stopped reporting (closed laptop, crash). */
@@ -234,7 +300,9 @@ class RunQueue
 
         foreach ($stale as $run) {
             DB::transaction(function () use ($run) {
-                $this->failed($run, 'The worker stopped reporting. Start it again, then reassign the droid.');
+                $this->failed($run, $run->isBuild()
+                    ? 'The worker stopped reporting. Start it again, then reassign the droid.'
+                    : 'The worker stopped reporting. Start it again, then ask again.');
                 $run->droid->save();
                 $run->save();
             });

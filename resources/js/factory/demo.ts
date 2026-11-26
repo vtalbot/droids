@@ -1,12 +1,6 @@
-// Placeholder droid output for chat, planning and reflection until the runners
-// and the planner (phases 4 and 5) generate it for real.
+// Sample droid output shown for the seeded demo chats. Real conversations carry
+// their own items, written by droids on a worker.
 import type { Draft, Proposal, Provider } from '@/factory/data';
-
-export const SUGGEST: Record<string, string[]> = {
-    cl02: ['Merge PR #418', 'Send back to CX-12'],
-    cl01: ['Grant read access', 'Plan without it'],
-    cx15: ['Pinned runs first', 'Old runs first'],
-};
 
 // ---------- Reflection and planning content ----------
 export const RETRO: Record<

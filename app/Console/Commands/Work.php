@@ -12,7 +12,7 @@ class Work extends Command
 {
     protected $signature = 'droids:work
         {--once : Run at most one job, then exit}
-        {--sleep=15 : Seconds to wait when there is nothing to do}';
+        {--sleep=5 : Seconds to wait when there is nothing to do}';
 
     protected $description = 'Run droids on this machine: pick up queued tasks from the Droids server and work on them with Claude Code or Codex';
 
@@ -40,7 +40,9 @@ class Work extends Command
             }
 
             $this->newLine();
-            $this->info("Run #{$job['id']}: {$job['droid']['unit']} {$job['droid']['name']} on {$job['repo']} ({$job['branch']})");
+            $kind = $job['kind'] ?? 'build';
+            $where = $kind === 'build' ? "on {$job['repo']} ({$job['branch']})" : "{$kind}".(! empty($job['repo']) ? " on {$job['repo']}" : '');
+            $this->info("Run #{$job['id']}: {$job['droid']['unit']} {$job['droid']['name']} {$where}");
             $result = $runner->run($job, fn (string $line) => $this->line('  '.str_replace("\n", "\n  ", $line)));
             $this->info("Run #{$job['id']} {$result['status']}".(! empty($result['error']) ? ": {$result['error']}" : ''));
         } while (! $this->option('once'));

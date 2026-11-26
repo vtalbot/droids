@@ -76,6 +76,8 @@ class FactoryState
             'cloud' => $projects->mapWithKeys(fn (Project $p) => [$p->slug => $p->cloud_snapshot]),
             'github' => ['configured' => GithubApp::current() !== null],
             'runs' => $this->runs($slugs),
+            'asks' => Run::whereIn('kind', Run::ASK_KINDS)->whereIn('status', Run::ACTIVE)->get(['topic', 'kind', 'status'])
+                ->mapWithKeys(fn (Run $r) => [(string) $r->topic => ['kind' => $r->kind, 'status' => $r->status]]),
             'workers' => [
                 'total' => Worker::count(),
                 'online' => Worker::where('last_seen_at', '>', now()->subMinutes(2))->count(),
@@ -136,8 +138,11 @@ class FactoryState
     private function runs(Collection $slugs): array
     {
         $out = [];
-        $latest = Run::with(['task', 'droid', 'subscription'])->whereIn('id', Run::selectRaw('max(id)')->groupBy('task_id'))->get();
+        $latest = Run::with(['task', 'droid', 'subscription'])->whereIn('id', Run::selectRaw('max(id)')->whereNotNull('task_id')->groupBy('task_id'))->get();
         foreach ($latest as $run) {
+            if (! $run->task) {
+                continue;
+            }
             $out[$slugs[$run->task->project_id].':'.$run->task->number] = [
                 'id' => $run->id,
                 'status' => $run->status,
@@ -230,7 +235,7 @@ class FactoryState
     {
         $out = [];
         foreach (ChatMessage::orderBy('id')->get() as $m) {
-            $out[$droidSlugs[$m->droid_id]][] = ['kind' => $m->kind, ...$m->payload];
+            $out[$m->topic ?? $droidSlugs[$m->droid_id]][] = ['id' => $m->id, 'kind' => $m->kind, ...$m->payload];
         }
 
         return $out;

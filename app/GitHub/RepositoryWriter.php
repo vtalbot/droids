@@ -17,11 +17,12 @@ class RepositoryWriter
      *
      * @param  list<string>  $labels
      */
-    public function createIssue(Project $project, string $title, array $labels = [], ?Milestone $milestone = null): Task
+    public function createIssue(Project $project, string $title, array $labels = [], ?Milestone $milestone = null, ?string $body = null): Task
     {
         [$owner, $repo] = $project->ownerAndName();
         $issue = $this->github->forProject($project)->post("/repos/{$owner}/{$repo}/issues", array_filter([
             'title' => $title,
+            'body' => $body ?: null,
             'labels' => $labels ?: null,
             'milestone' => $milestone?->github_number,
         ]))->json();
