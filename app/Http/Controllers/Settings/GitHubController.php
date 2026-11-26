@@ -8,6 +8,8 @@ use App\Http\Controllers\Controller;
 use App\Models\GithubApp;
 use App\Models\GithubInstallation;
 use App\Models\Project;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -85,7 +87,13 @@ class GitHubController extends Controller
         $expected = $request->session()->pull('github_manifest_state');
         abort_unless(is_string($expected) && hash_equals($expected, (string) $request->query('state')), 403, 'This GitHub App setup link has expired. Start again from Settings.');
 
-        $data = $github->convertManifest((string) $request->query('code'));
+        try {
+            $data = $github->convertManifest((string) $request->query('code'));
+        } catch (RequestException|ConnectionException $e) {
+            report($e);
+
+            return $this->failed('GitHub did not hand over the new App\'s keys ('.$this->reason($e).'). If the App was created on GitHub, delete it under Developer settings > GitHub Apps, then create it again here.');
+        }
 
         $app = GithubApp::updateOrCreate(['app_id' => $data['id']], [
             'slug' => $data['slug'],
@@ -104,9 +112,19 @@ class GitHubController extends Controller
     /** GitHub sends people here after they install (or update) the App. */
     public function installed(Request $request, GitHub $github): RedirectResponse
     {
+        if (! $github->configured()) {
+            return $this->failed('Droids has no GitHub App saved yet, so it cannot record this installation. Delete the App under GitHub Developer settings > GitHub Apps, then create it again here.');
+        }
+
         $id = (int) $request->query('installation_id');
         if ($id > 0) {
-            $installation = $github->asApp()->get("/app/installations/{$id}")->json();
+            try {
+                $installation = $github->asApp()->get("/app/installations/{$id}")->json();
+            } catch (RequestException|ConnectionException $e) {
+                report($e);
+
+                return $this->failed('GitHub did not confirm the installation ('.$this->reason($e).'). Try Change repository access again.');
+            }
             GithubInstallation::updateOrCreate(['installation_id' => $id], [
                 'account_login' => $installation['account']['login'],
                 'account_type' => $installation['account']['type'] ?? 'User',
@@ -138,6 +156,20 @@ class GitHubController extends Controller
             : ['type' => 'success', 'message' => 'Synced with GitHub.']);
 
         return back();
+    }
+
+    private function failed(string $message): RedirectResponse
+    {
+        Inertia::flash('toast', ['type' => 'error', 'message' => $message]);
+
+        return to_route('github.edit');
+    }
+
+    private function reason(RequestException|ConnectionException $e): string
+    {
+        return $e instanceof RequestException
+            ? $e->response->status().' '.($e->response->json('message') ?? 'error')
+            : 'could not reach api.github.com';
     }
 
     private function isLocal(): bool

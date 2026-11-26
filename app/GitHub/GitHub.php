@@ -54,7 +54,7 @@ class GitHub
     public function installationToken(int $installationId): string
     {
         return Cache::remember("github.installation-token.{$installationId}", now()->addMinutes(50), function () use ($installationId) {
-            return (string) $this->asApp()->post("/app/installations/{$installationId}/access_tokens")->json('token');
+            return (string) $this->asApp()->send('POST', "/app/installations/{$installationId}/access_tokens")->json('token');
         });
     }
 
@@ -77,7 +77,7 @@ class GitHub
      */
     public function convertManifest(string $code): array
     {
-        return $this->request()->post("/app-manifests/{$code}/conversions")->json();
+        return $this->request()->send('POST', "/app-manifests/{$code}/conversions")->json();
     }
 
     public function verifySignature(string $payload, ?string $signature): bool

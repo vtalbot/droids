@@ -156,11 +156,31 @@ class GitHubTest extends TestCase
         $this->assertSame(777, $app->app_id);
         $this->assertSame('w', $app->webhook_secret);
         $this->assertStringNotContainsString('PRIVATE KEY', (string) $app->getRawOriginal('private_key'));
+        // GitHub rejects a JSON [] body on these endpoints, so none may be sent.
+        Http::assertSent(fn (Request $r) => str_contains($r->url(), '/conversions') && $r->body() === '');
     }
 
     public function test_manifest_callback_rejects_a_wrong_state(): void
     {
         $this->get('/settings/github/created?code=x&state=nope')->assertForbidden();
+    }
+
+    public function test_manifest_callback_explains_a_rejected_code(): void
+    {
+        $this->get('/settings/github/create');
+        $state = session('github_manifest_state');
+        Http::fake(['api.github.com/app-manifests/used/conversions' => Http::response(['message' => 'Not Found'], 404)]);
+
+        $this->get("/settings/github/created?code=used&state={$state}")->assertRedirect('/settings/github');
+
+        $this->assertNull(GithubApp::current());
+    }
+
+    public function test_install_callback_without_an_app_redirects_instead_of_failing(): void
+    {
+        $this->get('/settings/github/installed?installation_id=42')->assertRedirect('/settings/github');
+
+        $this->assertSame(0, GithubInstallation::count());
     }
 
     public function test_install_callback_records_the_installation(): void
@@ -323,6 +343,8 @@ class GitHubTest extends TestCase
         ]);
 
         $this->postJson('/factory/projects/droids/pulls/9/rerun')->assertOk()->assertJsonPath('rerun', 1);
+        Http::assertSent(fn (Request $r) => str_contains($r->url(), '/access_tokens') && $r->body() === '');
+        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'jobs/555/rerun') && $r->body() === '');
         Http::assertNotSent(fn (Request $r) => str_contains($r->url(), 'jobs/556'));
     }
 

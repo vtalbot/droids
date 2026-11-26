@@ -58,7 +58,7 @@ class RepositoryWriter
         $count = 0;
         foreach ($pr->checks ?? [] as $check) {
             if ($check['state'] === 'fail' && ! empty($check['job'])) {
-                $http->post("/repos/{$owner}/{$repo}/actions/jobs/{$check['job']}/rerun");
+                $http->send('POST', "/repos/{$owner}/{$repo}/actions/jobs/{$check['job']}/rerun");
                 $count++;
             }
         }
