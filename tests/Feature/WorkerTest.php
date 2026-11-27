@@ -218,6 +218,30 @@ SH);
         Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/finish') && ! isset($r['design']));
     }
 
+    public function test_the_shared_memory_goes_into_the_clone_and_edits_come_back(): void
+    {
+        $job = ['memory' => "# Shared memory\n"] + $this->job();
+        Http::fake([
+            'droids.test/api/worker/claim' => Http::response(['run' => $job]),
+            'droids.test/api/worker/runs/5/progress' => Http::response(['cancelled' => false]),
+            'droids.test/api/worker/runs/5/token' => Http::response(['token' => 'ghs_push']),
+            'droids.test/api/worker/runs/5/finish' => Http::response(['status' => 'succeeded']),
+        ]);
+        $this->stubCli(<<<'SH'
+echo "- Tests run with phpunit." >> .droids/memory.md
+echo "dark" > theme.txt
+echo '{"type":"result","subtype":"success","is_error":false,"result":"Done.","usage":{}}'
+SH);
+
+        $this->artisan('droids:work --once')->assertSuccessful();
+
+        Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/finish') && $r['memory_base'] === "# Shared memory\n"
+            && $r['memory'] === "# Shared memory\n- Tests run with phpunit.\n");
+        $files = $this->sh(['git', 'ls-tree', '-r', '--name-only', 'droids/7-dark-mode'], "{$this->root}/git/vtalbot/droids.git");
+        $this->assertStringContainsString('theme.txt', $files);
+        $this->assertStringNotContainsString('.droids', $files);
+    }
+
     private function pushBranch(string $branch): void
     {
         $this->sh(['git', 'checkout', '-q', '-b', $branch], "{$this->root}/seed");

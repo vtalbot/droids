@@ -37,6 +37,7 @@ class RunQueue
         private Conversation $conversation,
         private Review $review,
         private Design $design,
+        private Memory $memory,
     ) {}
 
     public function queue(Droid $droid, Task $task): Run
@@ -132,8 +133,8 @@ class RunQueue
 
             return Run::create([
                 'droid_id' => $droid->id,
-                // Reflect works from the droid's history, so it skips the clone.
-                'project_id' => $kind === 'reflect' ? null : ($project->id ?? $droid->project_id),
+                // Reflect works from the droid's history and recruiting from the whole factory, so they skip the clone.
+                'project_id' => in_array($kind, ['reflect', 'recruit'], true) ? null : ($project->id ?? $droid->project_id),
                 'kind' => $kind,
                 'topic' => $topic,
                 'input' => $text,
@@ -217,6 +218,7 @@ class RunQueue
             'droid' => ['name' => $run->droid->name, 'unit' => $run->droid->unit],
             // Reflect has no project; everything else works next to the project's design.
             'design' => $this->design->files($project),
+            'memory' => $this->memory->content($project),
         ];
     }
 
@@ -266,7 +268,7 @@ class RunQueue
     }
 
     /**
-     * @param  array{status: string, summary?: string|null, error?: string|null, pushed?: bool, cost?: float|int|null, tokens_in?: int|null, tokens_out?: int|null, limited_until?: string|null, log?: string|null, design?: list<array{path: string, content: string}>|null}  $result
+     * @param  array{status: string, summary?: string|null, error?: string|null, pushed?: bool, cost?: float|int|null, tokens_in?: int|null, tokens_out?: int|null, limited_until?: string|null, log?: string|null, design?: list<array{path: string, content: string}>|null, memory?: string|null, memory_base?: string|null}  $result
      */
     public function finish(Run $run, array $result): Run
     {
@@ -284,6 +286,10 @@ class RunQueue
             ]);
             $droid = $run->droid;
             $droid->cost = $droid->cost + $run->cost;
+            $project = $this->projectOf($run);
+            if ($result['status'] === 'succeeded' && $project && isset($result['memory'], $result['memory_base'])) {
+                $this->memory->save($project, $droid, $result['memory_base'], $result['memory']);
+            }
 
             match ($result['status']) {
                 'limited' => $this->limited($run, $result['limited_until'] ?? null, $result['error'] ?? null),

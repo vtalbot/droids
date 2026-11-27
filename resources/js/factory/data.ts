@@ -24,7 +24,8 @@ export type Droid = {
     model: string;
     role: string;
     status: Status;
-    project: string;
+    /** The project the droid is working on; null until it is given a task. */
+    project: string | null;
     task: number | null;
     step: string;
     progress: number;
@@ -81,7 +82,6 @@ type ChatItemBody =
       }
     | {
           kind: 'candidates';
-          project: string;
           items: Candidate[];
       }
     | {

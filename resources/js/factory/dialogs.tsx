@@ -10,8 +10,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
     Select,
     SelectContent,
@@ -19,15 +17,17 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { CheckIcon, SparklesIcon, UsersIcon } from 'lucide-react';
-import { Shimmer } from '@/components/ai-elements/shimmer';
+import { CheckIcon } from 'lucide-react';
 import {
-    PROVIDERS,
-    ROLES,
-    type Candidate,
-    type Project,
-    type Provider,
-} from '@/factory/data';
+    PromptInput,
+    PromptInputBody,
+    PromptInputFooter,
+    PromptInputSubmit,
+    PromptInputTextarea,
+    PromptInputTools,
+} from '@/components/ai-elements/prompt-input';
+import { Shimmer } from '@/components/ai-elements/shimmer';
+import { PROVIDERS, type Candidate, type Provider } from '@/factory/data';
 import { request, useSave } from '@/factory/api';
 import type { Store } from '@/factory/app';
 import { DroidAvatar } from '@/factory/droid-avatar';
@@ -38,330 +38,244 @@ export type NewDroid = {
     provider: Provider;
     model: string;
     role: string;
-    project: string;
     autonomy: string;
     instructions: string;
     seed: number;
 };
 
-const NAMES = [
-    'Bolt',
-    'Cog',
-    'Dyna',
-    'Echo',
-    'Hex',
-    'Ion',
-    'Jolt',
-    'Kilo',
-    'Nova',
-    'Orbit',
-    'Piston',
-    'Volt',
-];
-
 export function AssembleDialog({
     open,
     onOpenChange,
-    projects,
-    defaultProject,
     onCreate,
     nextSeed,
     nextUnit,
-    defaultRole = 'Builder',
+    defaultRole,
     store,
 }: {
     store: Store;
     open: boolean;
     onOpenChange: (o: boolean) => void;
-    projects: Project[];
-    defaultProject: string;
     onCreate: (d: NewDroid) => Promise<boolean>;
     nextSeed: number;
     nextUnit: (p: Provider) => string;
+    /** Ask for a droid of this role straight away, e.g. a designer. */
     defaultRole?: string;
 }) {
-    const [provider, setProvider] = useState<Provider>('claude');
-    const [model, setModel] = useState('Sonnet 5.5');
-    const [name, setName] = useState('Bolt');
-    const [role, setRole] = useState('Builder');
-    const [project, setProject] = useState(defaultProject);
-    const [auto, setAuto] = useState('pr');
+    const save = useSave();
+    const [picked, setPicked] = useState<Candidate | null>(null);
     const [seed, setSeed] = useState(nextSeed);
-    const [instructions, setInstructions] = useState(
-        'Write tests first. Keep PRs under 400 lines. Ask before adding a dependency.',
-    );
+    const [text, setText] = useState('');
+    const [sending, setSending] = useState(false);
     const [busy, setBusy] = useState(false);
-    const [picked, setPicked] = useState<string | null>(null);
-    const pick = (c: Candidate, look: number) => {
-        setPicked(`${c.name}:${c.role}`);
-        setSeed(look);
-        setName(c.name);
-        setRole(c.role);
-        setProvider(c.provider);
-        setModel(c.model);
-        if (c.instructions) setInstructions(c.instructions);
+
+    const ask = store.asks?.recruit;
+    const chat = store.chats.recruit ?? [];
+    const thinking = sending || !!ask;
+    const hr =
+        store.droids.find((d) => d.role === 'HR') ??
+        store.droids.find((d) => d.role === 'Planner') ??
+        store.droids[0];
+    // Every batch the HR droid proposed, newest first, then the starters.
+    const batches = chat
+        .filter((i) => i.kind === 'candidates')
+        .reverse()
+        .flatMap((i) => (i.kind === 'candidates' ? i.items : []));
+    const candidates = [
+        ...batches,
+        ...STARTERS.filter(
+            (s) =>
+                !batches.some((b) => b.name === s.name) &&
+                (s.role !== 'HR' || !store.droids.some((d) => d.role === 'HR')),
+        ),
+    ];
+    const lastAsk = chat.map((i) => i.kind).lastIndexOf('user');
+    const answer = lastAsk >= 0 ? chat.slice(lastAsk + 1) : [];
+    const note = answer.find((i) => i.kind === 'agent');
+    const reply = !ask && note?.kind === 'agent' ? note.text : null;
+
+    const request = async (msg: string) => {
+        const t = msg.trim();
+        if (!hr || !t || thinking) return;
+        setText('');
+        setSending(true);
+        const res = await save(
+            'POST',
+            `/factory/droids/${encodeURIComponent(hr.id)}/ask`,
+            { kind: 'recruit', text: t },
+        );
+        if (!res) setText(t);
+        setSending(false);
     };
+
     useEffect(() => {
-        if (open) {
-            setPicked(null);
-            setProject(defaultProject);
-            setSeed(nextSeed);
-            setName(NAMES[nextSeed % NAMES.length]);
-            setRole(defaultRole);
-            if (defaultRole === 'Designer') {
-                setProvider('claude');
-                setModel('Opus 5.5');
-                setInstructions(
-                    'Start from what the product already looks like. Keep the system small: a few colors, one type scale, the components the screens need.',
-                );
-            }
-        }
+        if (!open) return;
+        setPicked(null);
+        setSeed(nextSeed);
+        setText(
+            defaultRole && defaultRole !== 'Builder'
+                ? `I need a ${defaultRole.toLowerCase()} droid.`
+                : '',
+        );
     }, [open]); // eslint-disable-line
-    const unit = nextUnit(provider);
+
+    const assemble = async () => {
+        if (!picked) return;
+        setBusy(true);
+        const ok = await onCreate({
+            name: picked.name,
+            provider: picked.provider,
+            model: picked.model,
+            role: picked.role,
+            autonomy: 'pr',
+            instructions: picked.instructions,
+            seed,
+        });
+        setBusy(false);
+        if (ok) onOpenChange(false);
+    };
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-h-[calc(100%-2rem)] overflow-y-auto sm:max-w-[600px]">
-                <form
-                    onSubmit={async (e) => {
-                        e.preventDefault();
-                        setBusy(true);
-                        const ok = await onCreate({
-                            name: name.trim() || 'Droid',
-                            provider,
-                            model,
-                            role,
-                            project,
-                            autonomy: auto,
-                            instructions,
-                            seed,
-                        });
-                        setBusy(false);
-                        if (ok) onOpenChange(false);
-                    }}
-                    className="grid gap-5"
-                >
-                    <DialogHeader>
-                        <DialogTitle>Assemble a droid</DialogTitle>
-                        <DialogDescription>
-                            Pick an engine, give it a job and a project. Droids
-                            work on their own branch and open pull requests.
-                        </DialogDescription>
-                    </DialogHeader>
+            <DialogContent className="flex max-h-[calc(100%-2rem)] flex-col gap-4 sm:max-w-[720px]">
+                <DialogHeader>
+                    <DialogTitle>Assemble a droid</DialogTitle>
+                    <DialogDescription>
+                        {hr
+                            ? `Tell ${hr.unit} ${hr.name} what you need and pick from the candidates. Droids join a project when you give them a task.`
+                            : 'Pick a starter droid. Hire an HR droid first and it will propose candidates from what you ask for.'}
+                    </DialogDescription>
+                </DialogHeader>
 
-                    {project && (
-                        <CrewSuggestions
-                            store={store}
-                            project={project}
-                            picked={picked}
-                            onPick={pick}
-                        />
-                    )}
+                <div className="-mx-1 grid min-h-0 flex-1 gap-2 overflow-y-auto px-1 sm:grid-cols-2">
+                    {candidates.map((c, n) => {
+                        const on =
+                            picked?.name === c.name && picked.role === c.role;
+                        const look = on ? seed : nextSeed + n;
+                        return (
+                            <button
+                                type="button"
+                                key={`${c.name}-${c.role}-${n}`}
+                                onClick={() => {
+                                    setPicked(c);
+                                    setSeed(nextSeed + n);
+                                }}
+                                aria-pressed={on}
+                                className={cn(
+                                    'grid content-start gap-1.5 rounded-lg border p-3 text-left text-sm hover:bg-accent',
+                                    on && 'border-ring bg-accent',
+                                )}
+                            >
+                                <span className="flex items-center gap-2.5">
+                                    <DroidAvatar
+                                        provider={c.provider}
+                                        status="idle"
+                                        seed={look}
+                                        className="size-9"
+                                    />
+                                    <span className="min-w-0 leading-tight">
+                                        <span className="block font-medium">
+                                            {c.name}
+                                            {on && (
+                                                <span className="ml-1.5 font-mono text-xs font-normal text-muted-foreground">
+                                                    {nextUnit(c.provider)}
+                                                </span>
+                                            )}
+                                        </span>
+                                        <span className="block text-xs text-muted-foreground">
+                                            {c.role} ·{' '}
+                                            {PROVIDERS[c.provider].short}{' '}
+                                            {c.model}
+                                        </span>
+                                    </span>
+                                    {on && (
+                                        <CheckIcon className="ml-auto size-4 shrink-0" />
+                                    )}
+                                </span>
+                                <span>{c.pitch}</span>
+                                {c.why && (
+                                    <span className="text-xs text-muted-foreground">
+                                        {c.why}
+                                    </span>
+                                )}
+                                {on && c.instructions && (
+                                    <span className="rounded-md bg-background p-2 text-xs">
+                                        <span className="font-medium">
+                                            Instructions:{' '}
+                                        </span>
+                                        {c.instructions}
+                                    </span>
+                                )}
+                            </button>
+                        );
+                    })}
+                </div>
 
-                    <div className="blueprint flex items-center gap-4 rounded-xl border bg-muted/40 p-3">
-                        <DroidAvatar
-                            provider={provider}
-                            status="idle"
-                            seed={seed}
-                            className="size-16"
-                        />
-                        <div className="min-w-0 flex-1">
-                            <div className="flex items-baseline gap-2">
-                                <span className="font-mono text-sm">
-                                    {unit}
+                {thinking ? (
+                    <Shimmer className="text-sm">
+                        {ask?.status === 'running'
+                            ? `${hr?.unit} ${hr?.name} is looking for candidates…`
+                            : store.workers?.online
+                              ? 'Waiting for your worker to pick this up…'
+                              : 'No worker is online. Start php artisan droids:work to get candidates…'}
+                    </Shimmer>
+                ) : (
+                    reply && (
+                        <p className="text-sm text-muted-foreground">{reply}</p>
+                    )
+                )}
+
+                {hr && (
+                    <PromptInput onSubmit={(m) => void request(m.text)}>
+                        <PromptInputBody>
+                            <PromptInputTextarea
+                                value={text}
+                                onChange={(e) => setText(e.target.value)}
+                                placeholder="Describe the droid you need, e.g. a reviewer who knows Laravel security…"
+                                className="min-h-12"
+                            />
+                        </PromptInputBody>
+                        <PromptInputFooter>
+                            <PromptInputTools>
+                                <span className="px-2 text-xs text-muted-foreground">
+                                    {hr.unit} {hr.name} proposes new candidates
                                 </span>
-                                <span className="truncate text-lg font-semibold">
-                                    {name || 'Droid'}
-                                </span>
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                                {PROVIDERS[provider].label} · {model} · {role}
-                            </div>
-                        </div>
+                            </PromptInputTools>
+                            <PromptInputSubmit
+                                status={thinking ? 'submitted' : 'ready'}
+                                disabled={thinking || !text.trim()}
+                            />
+                        </PromptInputFooter>
+                    </PromptInput>
+                )}
+
+                <DialogFooter className="items-center">
+                    {picked && (
                         <Button
                             type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setSeed((s) => s + 1)}
+                            variant="ghost"
+                            className="mr-auto"
+                            onClick={() => setSeed((x) => x + 1)}
                         >
                             New look
                         </Button>
-                    </div>
-
-                    <div className="grid gap-2">
-                        <Label>Engine</Label>
-                        <RadioGroup
-                            value={provider}
-                            onValueChange={(v) => {
-                                const p = v as Provider;
-                                setProvider(p);
-                                setModel(
-                                    PROVIDERS[p].models[p === 'claude' ? 1 : 0],
-                                );
-                            }}
-                            className="grid grid-cols-1 gap-2 sm:grid-cols-2"
-                        >
-                            {(['claude', 'codex'] as Provider[]).map((p) => (
-                                <Label
-                                    key={p}
-                                    htmlFor={`eng-${p}`}
-                                    className={cn(
-                                        'flex cursor-pointer items-start gap-3 rounded-lg border p-3 font-normal',
-                                        provider === p &&
-                                            'border-ring bg-accent',
-                                    )}
-                                >
-                                    <RadioGroupItem
-                                        id={`eng-${p}`}
-                                        value={p}
-                                        className="mt-0.5"
-                                    />
-                                    <span className="grid gap-0.5">
-                                        <span className="flex items-center gap-2 font-medium">
-                                            <span
-                                                className={cn(
-                                                    'size-2 rounded-full',
-                                                    p === 'claude'
-                                                        ? 'bg-claude'
-                                                        : 'bg-codex',
-                                                )}
-                                            />
-                                            {PROVIDERS[p].label}
-                                        </span>
-                                        <span className="text-xs text-muted-foreground">
-                                            {p === 'claude'
-                                                ? 'Strong on planning, reviews and long refactors'
-                                                : 'Fast at scoped implementation and test fixes'}
-                                        </span>
-                                    </span>
-                                </Label>
-                            ))}
-                        </RadioGroup>
-                    </div>
-
-                    <div className="grid gap-4 sm:grid-cols-2">
-                        <div className="grid gap-2">
-                            <Label htmlFor="d-name">Name</Label>
-                            <Input
-                                id="d-name"
-                                value={name}
-                                onChange={(e) => setName(e.target.value)}
-                                maxLength={20}
-                            />
-                        </div>
-                        <div className="grid gap-2">
-                            <Label htmlFor="d-model">Model</Label>
-                            <Select value={model} onValueChange={setModel}>
-                                <SelectTrigger id="d-model" className="w-full">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {PROVIDERS[provider].models.map((m) => (
-                                        <SelectItem key={m} value={m}>
-                                            {m}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="grid gap-2">
-                            <Label htmlFor="d-role">Role</Label>
-                            <Select value={role} onValueChange={setRole}>
-                                <SelectTrigger id="d-role" className="w-full">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {ROLES.map((r) => (
-                                        <SelectItem key={r} value={r}>
-                                            {r}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="grid gap-2">
-                            <Label htmlFor="d-proj">Project</Label>
-                            <Select value={project} onValueChange={setProject}>
-                                <SelectTrigger id="d-proj" className="w-full">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {projects.map((p) => (
-                                        <SelectItem key={p.id} value={p.id}>
-                                            {p.name} · {p.repo}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
-
-                    <div className="grid gap-2">
-                        <Label>Autonomy</Label>
-                        <RadioGroup
-                            value={auto}
-                            onValueChange={setAuto}
-                            className="grid gap-2 sm:grid-cols-3"
-                        >
-                            {[
-                                [
-                                    'ask',
-                                    'Ask first',
-                                    'Checks in before each PR',
-                                ],
-                                ['pr', 'Open PRs', 'You review and merge'],
-                                [
-                                    'merge',
-                                    'Merge when green',
-                                    'Only with passing checks and a review',
-                                ],
-                            ].map(([v, l, s]) => (
-                                <Label
-                                    key={v}
-                                    htmlFor={`au-${v}`}
-                                    className={cn(
-                                        'flex cursor-pointer items-start gap-2.5 rounded-lg border p-3 font-normal',
-                                        auto === v && 'border-ring bg-accent',
-                                    )}
-                                >
-                                    <RadioGroupItem
-                                        id={`au-${v}`}
-                                        value={v}
-                                        className="mt-0.5"
-                                    />
-                                    <span className="grid gap-0.5">
-                                        <span className="font-medium">{l}</span>
-                                        <span className="text-xs text-muted-foreground">
-                                            {s}
-                                        </span>
-                                    </span>
-                                </Label>
-                            ))}
-                        </RadioGroup>
-                    </div>
-
-                    <div className="grid gap-2">
-                        <Label htmlFor="d-ins">Instructions</Label>
-                        <Textarea
-                            id="d-ins"
-                            value={instructions}
-                            onChange={(e) => setInstructions(e.target.value)}
-                        />
-                    </div>
-
-                    <DialogFooter>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => onOpenChange(false)}
-                        >
-                            Cancel
-                        </Button>
-                        <Button type="submit" disabled={busy}>
-                            Assemble {unit}
-                        </Button>
-                    </DialogFooter>
-                </form>
+                    )}
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => onOpenChange(false)}
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        type="button"
+                        disabled={!picked || busy}
+                        onClick={() => void assemble()}
+                    >
+                        {picked
+                            ? `Assemble ${picked.name}`
+                            : 'Pick a candidate'}
+                    </Button>
+                </DialogFooter>
             </DialogContent>
         </Dialog>
     );
@@ -529,8 +443,18 @@ export function ConnectDialog({
     );
 }
 
-/** Ready-made droids for a project with no crew yet, when nobody can run a suggestion. */
+/** Ready-made droids, always offered next to the HR droid's candidates. */
 const STARTERS: Candidate[] = [
+    {
+        name: 'Mira',
+        role: 'HR',
+        provider: 'claude',
+        model: 'Sonnet 5.5',
+        pitch: "I'm Mira. Tell me what you need and I'll find you the right droids, with a pitch for each.",
+        why: 'An HR droid proposes candidates from your own words, so hire one first.',
+        instructions:
+            'Fill real gaps in the crew. Give each candidate a distinct name and a clear job. Prefer fewer, sharper droids.',
+    },
     {
         name: 'Bolt',
         role: 'Builder',
@@ -557,7 +481,7 @@ const STARTERS: Candidate[] = [
         provider: 'claude',
         model: 'Opus 5.5',
         pitch: "I'm Atlas. I turn a goal into issues one droid can finish in a day, and I keep the roadmap honest.",
-        why: 'A planner keeps the board stocked and can suggest the rest of the crew later.',
+        why: 'A planner keeps the boards stocked.',
         instructions:
             'Draft small issues with acceptance criteria. Pick the engine for each. Never duplicate an open issue.',
     },
@@ -572,151 +496,3 @@ const STARTERS: Candidate[] = [
             'Start from what the product already looks like. Keep the system small: a few colors, one type scale, the components the screens need.',
     },
 ];
-
-/** Candidates the planner proposes for a project, or starters when there is no droid to ask. */
-function CrewSuggestions({
-    store,
-    project,
-    picked,
-    onPick,
-}: {
-    store: Store;
-    project: string;
-    picked: string | null;
-    onPick: (c: Candidate, seed: number) => void;
-}) {
-    const save = useSave();
-    const [sending, setSending] = useState(false);
-    const key = `recruit:${project}`;
-    const ask = store.asks?.[key];
-    const chat = store.chats[key] ?? [];
-    const lastCards = [...chat].reverse().find((i) => i.kind === 'candidates');
-    // The answer to the latest request: cards, or a message saying why there are none.
-    const lastAsk = chat.map((i) => i.kind).lastIndexOf('user');
-    const answer = lastAsk >= 0 ? chat.slice(lastAsk + 1) : [];
-    const note = answer.find((i) => i.kind === 'agent');
-    const failed =
-        !ask &&
-        note?.kind === 'agent' &&
-        !answer.some((i) => i.kind === 'candidates')
-            ? note.text
-            : null;
-    const recruiter =
-        store.droids.find(
-            (d) => d.project === project && d.role === 'Planner',
-        ) ??
-        store.droids.find((d) => d.role === 'Planner') ??
-        store.droids.find((d) => d.project === project) ??
-        store.droids[0];
-    const thinking = sending || !!ask;
-    const items =
-        lastCards?.kind === 'candidates'
-            ? lastCards.items
-            : recruiter
-              ? []
-              : STARTERS;
-
-    const suggest = async () => {
-        if (!recruiter || thinking) return;
-        setSending(true);
-        await save(
-            'POST',
-            `/factory/droids/${encodeURIComponent(recruiter.id)}/ask`,
-            {
-                kind: 'recruit',
-                project,
-                text: 'Suggest droids for this project.',
-            },
-        );
-        setSending(false);
-    };
-
-    return (
-        <div className="grid gap-3 rounded-xl border p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 text-sm font-medium">
-                        <UsersIcon className="size-4" />
-                        {recruiter ? 'Suggested crew' : 'Starter crew'}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                        {recruiter
-                            ? `${recruiter.unit} ${recruiter.name} reads the repo, the issues and the crew, then proposes droids. Pick one to fill in the form.`
-                            : 'Pick one to fill in the form. Once a droid exists, it can suggest a crew from the repo.'}
-                    </p>
-                </div>
-                {recruiter && (
-                    <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={thinking}
-                        onClick={() => void suggest()}
-                    >
-                        <SparklesIcon />
-                        {items.length ? 'Suggest again' : 'Suggest a crew'}
-                    </Button>
-                )}
-            </div>
-            {thinking && (
-                <Shimmer className="text-sm">
-                    {ask?.status === 'running'
-                        ? `${recruiter?.unit} is reading the project…`
-                        : store.workers?.online
-                          ? 'Waiting for your worker to pick this up…'
-                          : 'No worker is online. Start php artisan droids:work to get suggestions…'}
-                </Shimmer>
-            )}
-            {!thinking && failed && (
-                <p className="text-sm text-muted-foreground">{failed}</p>
-            )}
-            {items.length > 0 && (
-                <div className="grid gap-2 sm:grid-cols-2">
-                    {items.map((c, n) => {
-                        const on = picked === `${c.name}:${c.role}`;
-                        return (
-                            <button
-                                type="button"
-                                key={`${c.name}-${n}`}
-                                onClick={() => onPick(c, n + 3)}
-                                aria-pressed={on}
-                                className={cn(
-                                    'grid gap-1.5 rounded-lg border p-3 text-left text-sm hover:bg-accent',
-                                    on && 'border-ring bg-accent',
-                                )}
-                            >
-                                <span className="flex items-center gap-2">
-                                    <DroidAvatar
-                                        provider={c.provider}
-                                        status="idle"
-                                        seed={n + 3}
-                                        className="size-8"
-                                    />
-                                    <span className="min-w-0 leading-tight">
-                                        <span className="block font-medium">
-                                            {c.name}
-                                        </span>
-                                        <span className="block text-xs text-muted-foreground">
-                                            {c.role} ·{' '}
-                                            {PROVIDERS[c.provider].short}{' '}
-                                            {c.model}
-                                        </span>
-                                    </span>
-                                    {on && (
-                                        <CheckIcon className="ml-auto size-4" />
-                                    )}
-                                </span>
-                                <span>{c.pitch}</span>
-                                {c.why && (
-                                    <span className="text-xs text-muted-foreground">
-                                        {c.why}
-                                    </span>
-                                )}
-                            </button>
-                        );
-                    })}
-                </div>
-            )}
-        </div>
-    );
-}

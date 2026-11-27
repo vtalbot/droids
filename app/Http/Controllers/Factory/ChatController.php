@@ -18,7 +18,7 @@ class ChatController extends Controller
     {
         $data = $request->validate([
             'kind' => ['required', Rule::in(Run::ASK_KINDS)],
-            'project' => ['nullable', 'string', Rule::requiredIf(in_array($request->input('kind'), ['plan', 'propose', 'design', 'recruit'], true))],
+            'project' => ['nullable', 'string', Rule::requiredIf(in_array($request->input('kind'), ['plan', 'propose', 'design'], true))],
             'text' => ['required', 'string', 'max:8000'],
             'intro' => ['nullable', 'string', 'max:4000'],
         ]);

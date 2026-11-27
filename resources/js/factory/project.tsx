@@ -11,6 +11,7 @@ import {
     YAxis,
 } from 'recharts';
 import {
+    BrainIcon,
     CheckCircle2Icon,
     CircleDotIcon,
     CloudIcon,
@@ -69,6 +70,7 @@ import { DroidAvatar } from '@/factory/droid-avatar';
 import { PrChip } from '@/factory/task-sheet';
 import { CloudPanel, cloudHealth } from '@/factory/cloud';
 import { DesignPanel } from '@/factory/design';
+import { MemoryPanel } from '@/factory/memory';
 import { cn } from '@/lib/utils';
 import { useSave } from '@/factory/api';
 import type { Store } from '@/factory/app';
@@ -160,6 +162,10 @@ export function ProjectView(props: Props) {
                         <PaletteIcon />
                         Design
                     </TabsTrigger>
+                    <TabsTrigger value="memory">
+                        <BrainIcon />
+                        Memory
+                    </TabsTrigger>
                     <TabsTrigger value="cloud">
                         <CloudIcon />
                         Laravel Cloud
@@ -178,6 +184,9 @@ export function ProjectView(props: Props) {
                         pid={p.id}
                         designWith={props.designWith}
                     />
+                </TabsContent>
+                <TabsContent value="memory" className="mt-4">
+                    <MemoryPanel store={store} pid={p.id} />
                 </TabsContent>
                 <TabsContent value="cloud" className="mt-4">
                     <CloudPanel store={store} bump={props.bump} pid={p.id} />
