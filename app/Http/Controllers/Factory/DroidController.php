@@ -3,9 +3,13 @@
 namespace App\Http\Controllers\Factory;
 
 use App\Models\Activity;
+use App\Models\ChatMessage;
 use App\Models\Droid;
 use App\Models\EngineModel;
 use App\Models\Project;
+use App\Models\Run;
+use App\Models\Task;
+use App\Runs\RunQueue;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -13,7 +17,7 @@ use Illuminate\Validation\Rule;
 
 class DroidController extends Controller
 {
-    public const ROLES = ['Builder', 'Reviewer', 'Planner', 'Designer', 'Tester', 'Docs', 'Triager', 'Fixer', 'Copywriter', 'HR'];
+    public const ROLES = ['Builder', 'Reviewer', 'Planner', 'Designer', 'Tester', 'Docs', 'Triager', 'Fixer', 'Copywriter', 'Mechanic', 'HR'];
 
     /**
      * What each role does and the model that fits it. Light roles run well on
@@ -29,6 +33,7 @@ class DroidController extends Controller
         'Triager' => ['triages the Ideas column: acceptance criteria, priority and questions', 'Haiku 5.5'],
         'Fixer' => ['takes small Ready cards labelled bug or chore', 'Haiku 5.5 or the lightest GPT model on Codex'],
         'Copywriter' => ['suggests names, sender addresses and wording to prefill forms', 'Haiku 5.5'],
+        'Mechanic' => ['looks at blocked droids on its project and retries them, switches a model that is not available, or asks the person', 'Sonnet 5.5 or Haiku 5.5'],
         'HR' => ['proposes new droids to hire', 'Sonnet 5.5'],
     ];
 
@@ -124,6 +129,35 @@ class DroidController extends Controller
         }
 
         $droid->save();
+
+        return $this->state();
+    }
+
+    /** Run the droid's failed task run again, on its current model. */
+    public function retry(Droid $droid, RunQueue $queue): JsonResponse
+    {
+        $failed = RunQueue::lastFailure($droid);
+        abort_unless($failed !== null, 422, "{$droid->unit} {$droid->name} is not blocked on a run.");
+        abort_unless($queue->retry($failed) !== null, 422, 'Link the repository to the GitHub App so a worker can run it.');
+        Activity::create(['droid_id' => $droid->id, 'text' => 'Trying #'.($failed->task->number ?? '?')." again on {$droid->model}"]);
+
+        return $this->state();
+    }
+
+    /** Take a droid out of the factory: its tasks go back to Ready, project discussions keep what it said. */
+    public function destroy(Droid $droid, RunQueue $queue): JsonResponse
+    {
+        DB::transaction(function () use ($droid, $queue) {
+            $queue->cancelFor($droid, "{$droid->unit} {$droid->name} was deleted");
+            Run::where('droid_id', $droid->id)->whereIn('status', Run::ACTIVE)
+                ->update(['status' => 'cancelled', 'error' => 'The droid was deleted', 'finished_at' => now()]);
+            Task::where('builder_id', $droid->id)->where('column', 'progress')->update(['column' => 'ready']);
+            Task::where('builder_id', $droid->id)->update(['builder_id' => null]);
+            Task::where('reviewer_id', $droid->id)->update(['reviewer_id' => null]);
+            // Its own chat goes with it; shared topics stay.
+            ChatMessage::where('droid_id', $droid->id)->whereNull('topic')->delete();
+            $droid->delete();
+        });
 
         return $this->state();
     }

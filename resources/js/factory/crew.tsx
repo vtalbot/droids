@@ -139,6 +139,10 @@ export function crewNeeds(store: Store, pid: string): Need[] {
             'it takes small Ready cards labelled bug or chore, so builders keep the bigger work',
         ],
         [
+            'Mechanic',
+            'it looks at droids that get blocked, retries them or switches a model that is not available, and tells me when only I can fix it',
+        ],
+        [
             'Copywriter',
             'it suggests names, sender addresses and wording when I ask it to prefill a form',
         ],

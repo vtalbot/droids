@@ -65,6 +65,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::post('droids', [Factory\DroidController::class, 'store'])->name('droids.store');
         Route::patch('droids/{droid:slug}', [Factory\DroidController::class, 'update'])->name('droids.update');
+        Route::delete('droids/{droid:slug}', [Factory\DroidController::class, 'destroy'])->name('droids.destroy');
+        Route::post('droids/{droid:slug}/retry', [Factory\DroidController::class, 'retry'])->name('droids.retry');
         Route::post('droids/{droid:slug}/ask', [Factory\ChatController::class, 'ask'])->name('droids.ask');
         Route::patch('chat/{message}', [Factory\ChatController::class, 'update'])->name('chat.update');
 

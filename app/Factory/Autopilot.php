@@ -8,6 +8,7 @@ use App\Models\Project;
 use App\Models\Run;
 use App\Models\Task;
 use App\Runs\Conversation;
+use App\Runs\RunQueue;
 use Illuminate\Support\Collection;
 
 /**
@@ -18,10 +19,13 @@ class Autopilot
 {
     public function __construct(private AssignDroid $assign) {}
 
-    /** @return array{triage: int, assigned: int} what it started */
+    /** Times a Mechanic looks at the same task before leaving it to the person. */
+    public const UNBLOCK_TRIES = 2;
+
+    /** @return array{triage: int, assigned: int, unblock: int} what it started */
     public function tick(): array
     {
-        $out = ['triage' => 0, 'assigned' => 0];
+        $out = ['triage' => 0, 'assigned' => 0, 'unblock' => $this->unblock()];
         foreach (Project::where('auto_triage', true)->orWhere('auto_build', true)->get() as $project) {
             if ($project->auto_triage && $this->triage($project)) {
                 $out['triage']++;
@@ -32,6 +36,44 @@ class Autopilot
         }
 
         return $out;
+    }
+
+    /**
+     * A project's Mechanic looks at each droid that got blocked there: one look
+     * per failed run, and at most UNBLOCK_TRIES per task.
+     */
+    public function unblock(): int
+    {
+        $started = 0;
+        $mechanics = Droid::where('role', 'Mechanic')->whereNotNull('project_id')->orderBy('unit')->get()->groupBy('project_id');
+        foreach ($mechanics as $projectId => $crew) {
+            /** @var Droid $mechanic */
+            $mechanic = $crew->first();
+            $project = $mechanic->project;
+            foreach (Droid::where('project_id', $projectId)->where('status', 'blocked')->get() as $blocked) {
+                $failed = RunQueue::lastFailure($blocked);
+                if (! $failed || ! $project) {
+                    continue;
+                }
+                $topic = "unblock:{$project->slug}:{$failed->id}";
+                $failedIds = Run::where('task_id', $failed->task_id)->where('status', 'failed')->pluck('id');
+                $looked = Run::where('kind', 'unblock')->whereIn('topic', $failedIds->map(fn (int $id) => "unblock:{$project->slug}:{$id}"))->count();
+                if (Run::where('topic', $topic)->exists() || $looked >= self::UNBLOCK_TRIES) {
+                    continue;
+                }
+                Run::create([
+                    'droid_id' => $mechanic->id,
+                    'project_id' => $project->id,
+                    'kind' => 'unblock',
+                    'topic' => $topic,
+                    'input' => "{$blocked->unit} {$blocked->name} is blocked on #".($failed->task->number ?? '?').'. Find out why and unblock it.',
+                    'status' => 'queued',
+                ]);
+                $started++;
+            }
+        }
+
+        return $started;
     }
 
     /** The droid that triages a project: its Triager, else its Planner, else its first droid. */

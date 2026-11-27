@@ -1,4 +1,4 @@
-import { PencilIcon } from 'lucide-react';
+import { PencilIcon, Trash2Icon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -41,6 +41,7 @@ export function EditDroidButton({ d }: { d: Droid }) {
     const [autonomy, setAutonomy] = useState<Autonomy>(d.autonomy ?? 'pr');
     const [instructions, setInstructions] = useState(d.instructions ?? '');
     const [busy, setBusy] = useState(false);
+    const [confirming, setConfirming] = useState(false);
     const guide = ROLES.find((r) => r.role === role);
     const store = useStore();
     // Keep the droid's model in the list even if no worker has seen it lately.
@@ -52,6 +53,19 @@ export function EditDroidButton({ d }: { d: Droid }) {
         setRole(d.role);
         setAutonomy(d.autonomy ?? 'pr');
         setInstructions(d.instructions ?? '');
+        setConfirming(false);
+    };
+    const remove = async () => {
+        setBusy(true);
+        const res = await save(
+            'DELETE',
+            `/factory/droids/${encodeURIComponent(d.id)}`,
+        );
+        setBusy(false);
+        if (res) {
+            setOpen(false);
+            toast.success(`${d.unit} ${d.name} was deleted`);
+        }
     };
     const submit = async () => {
         if (!name.trim() || busy) return;
@@ -216,7 +230,44 @@ export function EditDroidButton({ d }: { d: Droid }) {
                                 placeholder="Rules the droid follows on every run"
                             />
                         </div>
-                        <DialogFooter>
+                        <DialogFooter className="items-center">
+                            {confirming ? (
+                                <span className="mr-auto flex items-center gap-2 text-sm">
+                                    Delete {d.name}?
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="destructive"
+                                        disabled={busy}
+                                        onClick={() => void remove()}
+                                    >
+                                        Delete
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => setConfirming(false)}
+                                    >
+                                        Keep
+                                    </Button>
+                                </span>
+                            ) : (
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    className="mr-auto text-blocked hover:text-blocked"
+                                    title={
+                                        d.task
+                                            ? 'Its task goes back to Ready for droids'
+                                            : undefined
+                                    }
+                                    onClick={() => setConfirming(true)}
+                                >
+                                    <Trash2Icon />
+                                    Delete droid
+                                </Button>
+                            )}
                             <Button
                                 type="button"
                                 variant="outline"
