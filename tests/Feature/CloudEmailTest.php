@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Http\Controllers\Factory\CloudDomainController;
 use App\Integrations\Cloudflare;
+use App\Integrations\Dns;
 use App\Integrations\Resend;
 use App\Models\CloudConnection;
 use App\Models\Project;
@@ -70,6 +71,19 @@ class CloudEmailTest extends TestCase
 
         Http::assertSent(fn (Request $r) => $r->url() === self::CLOUD.'/environments/env-prod/variables' && $r['method'] === 'set' && $r['variables'] === [['key' => 'MAIL_MAILER', 'value' => 'resend']]);
         Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/variables/delete') && $r['keys'] === ['APP_DEBUG']);
+    }
+
+    public function test_record_names_relative_to_the_zone_are_not_doubled_on_a_subdomain(): void
+    {
+        $sub = 'notifications.omiyagi.com';
+        $this->assertSame('send.notifications.omiyagi.com', Dns::absolute('send.notifications', $sub));
+        $this->assertSame('resend._domainkey.notifications.omiyagi.com', Dns::absolute('resend._domainkey.notifications', $sub));
+        $this->assertSame('notifications.omiyagi.com', Dns::absolute('notifications', $sub));
+        $this->assertSame('notifications.omiyagi.com', Dns::absolute('', $sub));
+        $this->assertSame('send.notifications.omiyagi.com', Dns::absolute('send.notifications.omiyagi.com', $sub));
+        $this->assertSame('send.notifications.omiyagi.com', Dns::absolute('send', $sub), 'a name relative to the subdomain still works');
+        $this->assertSame('send.omiyagi.com', Dns::absolute('send', 'omiyagi.com'));
+        $this->assertSame('com.omiyagi.com', Dns::absolute('com', 'omiyagi.com'), 'the zone itself never overlaps');
     }
 
     public function test_a_cloud_domain_asks_for_records_by_purpose(): void

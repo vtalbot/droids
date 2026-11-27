@@ -51,7 +51,15 @@ class Dns
         return $out;
     }
 
-    /** "send" under example.com is send.example.com; "" and "@" are the domain itself. */
+    /**
+     * A record name made absolute: "send" under example.com is send.example.com,
+     * and "" or "@" is the domain itself.
+     *
+     * Resend gives names relative to the zone, not to a subdomain: for
+     * mail.example.com it asks for "send.mail", which is send.mail.example.com.
+     * So a name that ends with the subdomain's own leading labels only gets
+     * the rest of the domain added.
+     */
     public static function absolute(string $name, string $domain): string
     {
         $name = strtolower(trim(rtrim($name, '.')));
@@ -59,8 +67,20 @@ class Dns
         if ($name === '' || $name === '@') {
             return $domain;
         }
+        if ($name === $domain || str_ends_with($name, ".{$domain}")) {
+            return $name;
+        }
 
-        return $name === $domain || str_ends_with($name, ".{$domain}") ? $name : "{$name}.{$domain}";
+        $labels = explode('.', $domain);
+        $nameLabels = explode('.', $name);
+        // Leave the last two labels (the zone, at least) out of the overlap.
+        for ($k = min(count($labels) - 2, count($nameLabels)); $k >= 1; $k--) {
+            if (array_slice($nameLabels, -$k) === array_slice($labels, 0, $k)) {
+                return $name.'.'.implode('.', array_slice($labels, $k));
+            }
+        }
+
+        return "{$name}.{$domain}";
     }
 
     /**
