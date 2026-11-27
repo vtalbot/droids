@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 type Key = { label: string | null; since: string | null } | null;
-type Props = { keys: { cloudflare: Key } };
+type Props = { keys: { cloudflare: Key; resend: Key } };
 
 const SERVICES = {
     cloudflare: {
@@ -22,6 +22,19 @@ const SERVICES = {
             </>
         ),
         placeholder: 'Paste a Cloudflare API token',
+    },
+    resend: {
+        name: 'Resend',
+        what: "Adds each project's domain to your own Resend account, turns on receiving email, and reads the DNS records it needs. Sending from your app goes through Laravel Cloud's Resend integration.",
+        how: (
+            <>
+                In Resend, open <strong>API Keys</strong> &gt;{' '}
+                <strong>Create API Key</strong> with{' '}
+                <strong>Full access</strong>: a sending-only key can't manage
+                domains.
+            </>
+        ),
+        placeholder: 'Paste a Resend API key (re_…)',
     },
 } as const;
 
@@ -104,18 +117,19 @@ function ServiceForm({
 export default function Services({ keys }: Props) {
     return (
         <>
-            <Head title="DNS" />
-            <h1 className="sr-only">DNS</h1>
+            <Head title="DNS & email" />
+            <h1 className="sr-only">DNS & email</h1>
             <ServiceForm service="cloudflare" current={keys.cloudflare} />
+            <ServiceForm service="resend" current={keys.resend} />
             <p className="text-sm text-muted-foreground">
                 Set each project's domain in its <strong>DNS</strong> tab. The
-                token is stored encrypted. Email goes through Laravel Cloud's
-                Resend integration, from each project's Laravel Cloud tab.
+                keys are stored encrypted. Set up email from each project's{' '}
+                <strong>Email</strong> tab.
             </p>
         </>
     );
 }
 
 Services.layout = {
-    breadcrumbs: [{ title: 'DNS', href: '/settings/services' }],
+    breadcrumbs: [{ title: 'DNS & email', href: '/settings/services' }],
 };

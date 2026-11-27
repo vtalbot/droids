@@ -17,6 +17,7 @@ import {
     CloudIcon,
     FlagIcon,
     GlobeIcon,
+    MailIcon,
     LightbulbIcon,
     MessagesSquareIcon,
     NotebookPenIcon,
@@ -75,6 +76,7 @@ import { CloudPanel, cloudHealth } from '@/factory/cloud';
 import { DesignPanel } from '@/factory/design';
 import { MemoryPanel } from '@/factory/memory';
 import { DnsPanel } from '@/factory/dns';
+import { CloudDomains, EmailPanel } from '@/factory/email';
 import { CrewCard } from '@/factory/crew';
 import { cn } from '@/lib/utils';
 import { useSave } from '@/factory/api';
@@ -266,6 +268,10 @@ export function ProjectView(props: Props) {
                         <GlobeIcon />
                         DNS
                     </TabsTrigger>
+                    <TabsTrigger value="email">
+                        <MailIcon />
+                        Email
+                    </TabsTrigger>
                     <TabsTrigger value="cloud">
                         <CloudIcon />
                         Laravel Cloud
@@ -289,7 +295,20 @@ export function ProjectView(props: Props) {
                     <MemoryPanel store={store} pid={p.id} />
                 </TabsContent>
                 <TabsContent value="dns" className="mt-4">
-                    <DnsPanel pid={p.id} />
+                    <div className="grid gap-4">
+                        <DnsPanel pid={p.id} />
+                        <CloudDomains
+                            pid={p.id}
+                            envs={
+                                store.cloud?.[p.id]?.linked
+                                    ? (store.cloud[p.id]?.envs ?? [])
+                                    : []
+                            }
+                        />
+                    </div>
+                </TabsContent>
+                <TabsContent value="email" className="mt-4">
+                    <EmailPanel pid={p.id} />
                 </TabsContent>
                 <TabsContent value="cloud" className="mt-4">
                     <CloudPanel store={store} bump={props.bump} pid={p.id} />

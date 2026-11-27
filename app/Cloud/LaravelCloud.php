@@ -104,6 +104,77 @@ class LaravelCloud
             : $this->http()->post("/environments/{$environment}/resend", $body);
     }
 
+    /**
+     * An environment's custom variables, as key and value.
+     *
+     * @return list<array{key: string, value: string}>
+     */
+    public function variables(string $environment): array
+    {
+        $attributes = $this->http()->get("/environments/{$environment}")->json('data.attributes') ?? [];
+        // The API reference nests them under an unnamed key; accept either place.
+        $list = $attributes['environment_variables'] ?? $attributes['']['environment_variables'] ?? [];
+        $out = [];
+        foreach (is_array($list) ? $list : [] as $v) {
+            if (is_array($v) && is_string($v['key'] ?? null)) {
+                $out[] = ['key' => $v['key'], 'value' => (string) ($v['value'] ?? '')];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Add variables, or update the ones whose key is already set.
+     *
+     * @param  list<array{key: string, value: string}>  $variables
+     */
+    public function setVariables(string $environment, array $variables): void
+    {
+        $this->http()->post("/environments/{$environment}/variables", ['method' => 'set', 'variables' => $variables]);
+    }
+
+    /** @param list<string> $keys */
+    public function deleteVariables(string $environment, array $keys): void
+    {
+        $this->http()->post("/environments/{$environment}/variables/delete", ['keys' => $keys]);
+    }
+
+    /** @return list<array<string, mixed>> an environment's custom domains, without their DNS records */
+    public function domains(string $environment): array
+    {
+        return $this->all("/environments/{$environment}/domains", []);
+    }
+
+    /** @return array<string, mixed> a domain with its DNS records */
+    public function domain(string $domain): array
+    {
+        return $this->http()->get("/domains/{$domain}")->json('data') ?? [];
+    }
+
+    /** @return array<string, mixed> the new domain, with the DNS records it needs */
+    public function createDomain(string $environment, string $name): array
+    {
+        return $this->http()->post("/environments/{$environment}/domains", ['name' => $name])->json('data') ?? [];
+    }
+
+    /** @return array<string, mixed> the domain after Cloud checked its DNS records */
+    public function verifyDomain(string $domain): array
+    {
+        return $this->http()->post("/domains/{$domain}/verify")->json('data') ?? [];
+    }
+
+    public function deleteDomain(string $domain): void
+    {
+        $this->http()->delete("/domains/{$domain}");
+    }
+
+    /** @return list<array<string, mixed>> the organization's Resend sending domains, with their DNS records */
+    public function sendingDomains(): array
+    {
+        return $this->all('/resend/domains', []);
+    }
+
     /** @return array<string, mixed> build and deploy steps */
     public function deploymentLogs(string $deployment): array
     {
