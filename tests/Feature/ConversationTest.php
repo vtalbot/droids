@@ -282,4 +282,25 @@ class ConversationTest extends TestCase
         $asks = $this->getJson('/factory/state')->json('store.asks');
         $this->assertSame('Every Claude subscription is at its usage limit.', reset($asks)['why']);
     }
+
+    public function test_a_project_discussion_is_one_thread_whichever_droid_answers(): void
+    {
+        $this->postJson('/factory/droids/cog/ask', ['kind' => 'chat', 'project' => 'droids', 'text' => 'How is it going?', 'intro' => "Let's talk about Droids."])
+            ->assertCreated()->assertJsonPath('store.asks.discuss:droids.kind', 'chat');
+        $job = $this->claim();
+        $this->assertSame('vtalbot/droids', $job['repo'], 'the droid reads the code');
+        $this->assertStringContainsString('talk about the project Droids (vtalbot/droids)', $job['prompt']);
+        $this->assertStringContainsString('#7 Add dark mode toggle', $job['prompt']);
+        $this->finish($job['id'], ['status' => 'succeeded', 'summary' => '{"message": "Dark mode is next.", "remember": ["Theme lives in app.css."]}']);
+
+        Droid::create(['slug' => 'rex', 'unit' => 'CL-02', 'name' => 'Rex', 'provider' => 'claude', 'model' => 'Opus 5.5', 'role' => 'Builder']);
+        $this->postJson('/factory/droids/rex/ask', ['kind' => 'chat', 'project' => 'droids', 'text' => 'And after that?', 'intro' => "Let's talk about Droids."])->assertCreated();
+        $prompt = $this->claim()['prompt'];
+        $this->assertStringContainsString('You are CL-02 Rex', $prompt);
+        $this->assertStringContainsString('You: Dark mode is next.', $prompt);
+
+        $chat = $this->getJson('/factory/state')->json('store.chats')['discuss:droids'];
+        $this->assertSame(['agent', 'user', 'agent', 'user'], array_column($chat, 'kind'), 'one intro, then both questions');
+        $this->assertStringContainsString('Theme lives in app.css.', (string) $this->project->refresh()->memory);
+    }
 }

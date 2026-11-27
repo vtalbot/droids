@@ -38,6 +38,7 @@ class Conversation
             in_array($kind, ['plan', 'propose'], true) && $project !== null => "plan:{$project->slug}",
             $kind === 'design' && $project !== null => "design:{$project->slug}",
             $kind === 'recruit' => 'recruit',
+            $kind === 'chat' && $project !== null => "discuss:{$project->slug}",
             default => $droid->slug,
         };
     }
@@ -45,7 +46,7 @@ class Conversation
     /** The topic as stored on chat messages: null for a droid's own chat. */
     public static function storedTopic(string $topic): ?string
     {
-        return preg_match('/^(plan|design):|^recruit$/', $topic) === 1 ? $topic : null;
+        return preg_match('/^(plan|design|discuss):|^recruit$/', $topic) === 1 ? $topic : null;
     }
 
     public function prompt(Run $run): string
@@ -72,7 +73,7 @@ class Conversation
             'reflect' => $this->reflectContext($droid),
             'design' => $this->designContext($project),
             'recruit' => $this->recruitContext($run),
-            default => $this->chatContext($droid),
+            default => $project ? $this->discussContext($project) : $this->chatContext($droid),
         }];
         if (! $design) {
             $lines = [...$lines, ...$this->design->promptLines($project, 'conversation')];
@@ -234,6 +235,26 @@ class Conversation
     }
 
     /** @return list<string> */
+    private function discussContext(Project $project): array
+    {
+        $milestone = $this->activeMilestone($project);
+        $open = $project->tasks()->where('column', '!=', 'done')->orderBy('number')->limit(40)->get();
+        $crew = Droid::where('project_id', $project->id)->orderBy('unit')->get()
+            ->map(fn (Droid $d) => "{$d->unit} {$d->name} ({$d->role}, {$d->status})")->implode(', ');
+
+        return [
+            "The person wants to talk about the project {$project->name} ({$project->repo}): how it is going, the code, the plan, or what to do next.",
+            ...$this->milestoneLines($milestone),
+            $crew !== '' ? "Droids docked on it: {$crew}." : 'No droid is docked on it yet.',
+            '',
+            'Open issues on its board:',
+            ...$this->taskLines($open),
+            '',
+            'Answer the person directly and ground what you say in the code and the board. You cannot change the board from here: if they want something done, tell them what to click, or suggest Plan tasks to draft issues.',
+        ];
+    }
+
+    /** @return list<string> */
     private function chatContext(Droid $droid): array
     {
         $droid->loadMissing(['task', 'project']);
@@ -266,8 +287,10 @@ class Conversation
     /** @return list<string> */
     private function history(Run $run): array
     {
-        $messages = ChatMessage::where('droid_id', $run->droid_id)
-            ->where('topic', self::storedTopic((string) $run->topic))
+        $topic = self::storedTopic((string) $run->topic);
+        // A project discussion is one thread, whichever droid answers.
+        $messages = ChatMessage::when(! str_starts_with((string) $topic, 'discuss:'), fn ($q) => $q->where('droid_id', $run->droid_id))
+            ->where('topic', $topic)
             ->whereIn('kind', ['user', 'agent'])
             ->latest('id')->limit(self::HISTORY + 1)->get()->reverse()->values();
 

@@ -270,4 +270,30 @@ class CloudTest extends TestCase
 
         $this->assertSame('droids', $this->project->refresh()->cloud_snapshot['app']);
     }
+
+    public function test_an_application_can_be_created_from_the_project_repo(): void
+    {
+        $this->connect();
+        $this->fakeApplication([
+            self::API.'/applications' => Http::response(['data' => ['id' => 'app-1', 'type' => 'applications', 'attributes' => ['name' => 'Droids']]], 201),
+        ]);
+
+        $this->postJson('/factory/projects/droids/cloud/applications', ['name' => 'Droids', 'region' => 'ca-central-1'])->assertCreated();
+
+        Http::assertSent(fn (Request $r) => $r->method() === 'POST' && $r->url() === self::API.'/applications'
+            && $r['repository'] === 'vtalbot/droids' && $r['name'] === 'Droids' && $r['region'] === 'ca-central-1' && $r['source_control_provider_type'] === 'github');
+        $this->assertSame('app-1', $this->project->refresh()->cloud_application_id);
+        $this->assertTrue($this->project->cloud_snapshot['linked']);
+    }
+
+    public function test_creating_an_application_shows_cloud_validation_errors(): void
+    {
+        $this->connect();
+        Http::fake([self::API.'/applications' => Http::response(['message' => 'The given data was invalid.', 'errors' => ['repository' => ['The repository is not connected to Laravel Cloud.']]], 422)]);
+
+        $this->postJson('/factory/projects/droids/cloud/applications', ['name' => 'Droids', 'region' => 'ca-central-1'])
+            ->assertUnprocessable()->assertJsonPath('message', 'Laravel Cloud: The repository is not connected to Laravel Cloud.');
+        $this->postJson('/factory/projects/droids/cloud/applications', ['name' => 'Droids', 'region' => 'mars-1'])->assertJsonValidationErrors('region');
+        $this->assertNull($this->project->refresh()->cloud_application_id);
+    }
 }
