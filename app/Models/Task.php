@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
@@ -21,6 +22,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property int|null $github_id
  * @property string $state
  * @property string|null $url
+ * @property Carbon|null $triaged_at
+ * @property string|null $question what the triage droid asked before the card can be built
  */
 class Task extends Model
 {
@@ -30,7 +33,7 @@ class Task extends Model
 
     protected function casts(): array
     {
-        return ['labels' => 'array'];
+        return ['labels' => 'array', 'triaged_at' => 'datetime'];
     }
 
     /** @return BelongsTo<Project, $this> */

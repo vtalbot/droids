@@ -3,6 +3,7 @@ import { PlusIcon, UsersIcon, XIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import {
     Card,
     CardContent,
@@ -217,6 +218,64 @@ export function CrewCard({
                     ))}
                 </CardContent>
             )}
+            <CardContent className="grid gap-2 border-t px-4 pt-3">
+                <Autopilot store={store} pid={pid} crew={crew} />
+            </CardContent>
         </Card>
+    );
+}
+
+/** Per project: the Planner triages Ideas, and idle builders take Ready cards. */
+function Autopilot({
+    store,
+    pid,
+    crew,
+}: {
+    store: Store;
+    pid: string;
+    crew: Droid[];
+}) {
+    const save = useSave();
+    const p = store.projects.find((x) => x.id === pid);
+    if (!p) return null;
+    const planner = crew.find((d) => d.role === 'Planner') ?? crew[0];
+    const builders = crew.filter((d) => d.role === 'Builder').length;
+    const toggle = (key: 'auto_triage' | 'auto_build', v: boolean) =>
+        void save('PATCH', `/factory/projects/${encodeURIComponent(pid)}`, {
+            [key]: v,
+        });
+    return (
+        <>
+            <label className="flex items-start gap-3 text-sm">
+                <Switch
+                    className="mt-0.5"
+                    checked={!!p.autoTriage}
+                    onCheckedChange={(v) => toggle('auto_triage', v)}
+                />
+                <span>
+                    Triage Ideas
+                    <span className="block text-xs text-muted-foreground">
+                        {planner
+                            ? `${planner.unit} ${planner.name} reads each new card, adds acceptance criteria and moves it to Ready for droids, or asks you in the project discussion.`
+                            : 'Add a Planner droid to the crew to triage new cards.'}
+                    </span>
+                </span>
+            </label>
+            <label className="flex items-start gap-3 text-sm">
+                <Switch
+                    className="mt-0.5"
+                    checked={!!p.autoBuild}
+                    onCheckedChange={(v) => toggle('auto_build', v)}
+                />
+                <span>
+                    Builders take Ready cards
+                    <span className="block text-xs text-muted-foreground">
+                        {builders
+                            ? `An idle builder on the crew starts the next card in Ready for droids, and an idle reviewer checks its pull request.`
+                            : 'Add a Builder droid to the crew to start cards on their own.'}
+                    </span>
+                </span>
+            </label>
+        </>
     );
 }

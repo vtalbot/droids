@@ -57,10 +57,15 @@ class ProjectController extends Controller
     public function update(Request $request, Project $project): JsonResponse
     {
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:80'],
+            'name' => ['sometimes', 'required', 'string', 'max:80'],
+            'auto_triage' => ['sometimes', 'boolean'],
+            'auto_build' => ['sometimes', 'boolean'],
         ]);
+        if (isset($data['name'])) {
+            $data['name'] = trim($data['name']);
+        }
 
-        $project->update(['name' => trim($data['name'])]);
+        $project->update($data);
 
         return $this->state();
     }

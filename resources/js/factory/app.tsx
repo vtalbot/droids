@@ -1612,6 +1612,11 @@ function Board({
                                         >
                                             {i.title}
                                         </button>
+                                        {i.question && i.col === 'backlog' && (
+                                            <p className="rounded-md bg-needs/10 px-2 py-1 text-xs text-needs">
+                                                Question: {i.question}
+                                            </p>
+                                        )}
                                         {store.prs[`${i.project}:${i.n}`] && (
                                             <PrChip
                                                 pr={

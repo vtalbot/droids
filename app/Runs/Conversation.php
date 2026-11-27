@@ -2,6 +2,7 @@
 
 namespace App\Runs;
 
+use App\GitHub\RepositoryWriter;
 use App\Http\Controllers\Factory\CloudVariableController;
 use App\Http\Controllers\Factory\DroidController;
 use App\Models\ChatMessage;
@@ -38,7 +39,10 @@ class Conversation
     /** The starter droids Assemble droid always offers (resources/js/factory/dialogs.tsx). */
     private const STARTER_NAMES = ['Mira', 'Bolt', 'Lumen', 'Atlas', 'Iris'];
 
-    public function __construct(private Design $design, private Memory $memory) {}
+    /** Ideas cards one triage run looks at. */
+    public const TRIAGE_BATCH = 10;
+
+    public function __construct(private Design $design, private Memory $memory, private RepositoryWriter $github) {}
 
     public static function topic(string $kind, Droid $droid, ?Project $project): string
     {
@@ -47,6 +51,7 @@ class Conversation
             $kind === 'design' && $project !== null => "design:{$project->slug}",
             $kind === 'recruit' => 'recruit',
             $kind === 'chat' && $project !== null => "discuss:{$project->slug}",
+            $kind === 'triage' && $project !== null => "triage:{$project->slug}",
             default => $droid->slug,
         };
     }
@@ -54,6 +59,11 @@ class Conversation
     /** The topic as stored on chat messages: null for a droid's own chat. */
     public static function storedTopic(string $topic): ?string
     {
+        // Triage talks to the person in the project discussion.
+        if (str_starts_with($topic, 'triage:')) {
+            return 'discuss:'.substr($topic, 7);
+        }
+
         return preg_match('/^(plan|design|discuss):|^recruit$/', $topic) === 1 ? $topic : null;
     }
 
@@ -81,6 +91,7 @@ class Conversation
             'reflect' => $this->reflectContext($droid),
             'design' => $this->designContext($project),
             'recruit' => $this->recruitContext($run),
+            'triage' => $this->triageContext($project),
             default => $project ? $this->discussContext($project) : $this->chatContext($droid),
         }];
         if (! $design) {
@@ -301,6 +312,7 @@ class Conversation
                 : '{"message": "...", "reasoning": "..."}',
             'propose' => '{"message": "...", "reasoning": "...", "proposals": [{"kind": "feature" or "milestone", "title": "...", "why": "...", "effort": "...", "engine": "claude" or "codex"}], "next": ["..."]}',
             'reflect' => '{"message": "...", "reasoning": "...", "good": ["..."], "improve": ["..."], "rules": ["..."]}',
+            'triage' => '{"message": "...", "reasoning": "...", "ready": [{"number": 12, "criteria": "- ...\\n- ..."}], "questions": [{"number": 13, "question": "..."}]}',
             'recruit' => '{"message": "...", "reasoning": "...", "candidates": [{"name": "...", "role": "...", "provider": "claude" or "codex", "model": "...", "pitch": "...", "why": "...", "instructions": "..."}]}',
             default => '{"message": "...", "reasoning": "..."}',
         };
@@ -319,8 +331,8 @@ class Conversation
             ->whereIn('kind', ['user', 'agent'])
             ->latest('id')->limit(self::HISTORY + 1)->get()->reverse()->values();
 
-        // The newest user message is the request itself.
-        if ($messages->last()?->kind === 'user') {
+        // The newest user message is the request itself; a triage run starts on its own.
+        if ($run->kind !== 'triage' && $messages->last()?->kind === 'user') {
             $messages->pop();
         }
 
@@ -369,6 +381,7 @@ class Conversation
             'plan' => $slug && ($items = $this->drafts($data['drafts'] ?? null)) ? $this->say($run, 'drafts', ['project' => $slug, 'items' => $items]) : null,
             'propose' => $slug && ($items = $this->proposals($data['proposals'] ?? null)) ? $this->say($run, 'proposals', ['project' => $slug, 'items' => $items]) : null,
             'chat' => $slug ? $this->sayActions($run, $slug, $data) : null,
+            'triage' => $run->project ? $this->triaged($run->project, $data) : null,
             'recruit' => ($items = $this->candidates($data['candidates'] ?? null)) ? $this->say($run, 'candidates', ['items' => $items]) : null,
             'reflect' => $this->say($run, 'retro', [
                 'provider' => $run->droid->provider,
@@ -617,6 +630,80 @@ class Conversation
         }
 
         return in_array($run->kind, ['chat', 'reflect'], true) ? $run->droid->project : null;
+    }
+
+    /**
+     * The Ideas cards a triage run should look at: new ones, and ones whose
+     * question the person may have answered in the discussion since.
+     *
+     * @return Collection<int, Task>
+     */
+    public static function triageCandidates(Project $project): Collection
+    {
+        $answered = ChatMessage::where('topic', "discuss:{$project->slug}")->where('kind', 'user')->max('created_at');
+
+        return $project->tasks()->where('column', 'backlog')->whereNull('builder_id')
+            ->where(fn ($q) => $q->whereNull('triaged_at')
+                ->orWhere(fn ($q) => $q->whereNotNull('question')->where('triaged_at', '<', $answered ?? '1970-01-01')))
+            ->orderBy('position')->limit(self::TRIAGE_BATCH)->get();
+    }
+
+    /** @return list<string> */
+    private function triageContext(?Project $project): array
+    {
+        if (! $project) {
+            return ['You are triaging, but no project is selected.'];
+        }
+        $cards = [];
+        foreach (self::triageCandidates($project) as $t) {
+            $body = $project->isLinked() ? rescue(fn () => $this->github->issueBody($project, $t->number), '', false) : '';
+            $cards = [...$cards, '', "#{$t->number} {$t->title}".($t->labels ? ' ['.implode(', ', $t->labels).']' : ''),
+                $body !== '' ? Str::limit($body, 3000) : '(no description)'];
+            if ($t->question) {
+                $cards[] = "You asked earlier: {$t->question}";
+            }
+        }
+
+        return [
+            "You triage the Ideas column of the project {$project->name} ({$project->repo}). A card you mark ready moves to \"Ready for droids\", where a builder droid picks it up and builds it alone, with no one to ask.",
+            ...$this->milestoneLines($this->activeMilestone($project)),
+            '',
+            'The cards to triage:',
+            ...$cards,
+            '',
+            'For each card, read the code it touches, then decide:',
+            '- Ready: a builder could finish it in under a day without guessing. Put it in "ready" with acceptance criteria as a short Markdown list, which is added to the issue.',
+            '- Not ready: something only the person can decide is missing (scope, behaviour, a choice between options). Put one short, specific question in "questions". Do not ask what you can find in the code.',
+            'A card you asked about before is ready once the conversation answers it.',
+            'In "message", tell the person in a few sentences which cards you moved and what you need from them, by issue number. They answer in this discussion.',
+        ];
+    }
+
+    /** @param array<string, mixed> $data */
+    private function triaged(Project $project, array $data): void
+    {
+        $candidates = self::triageCandidates($project)->keyBy('number');
+        foreach (is_array($data['ready'] ?? null) ? $data['ready'] : [] as $r) {
+            $task = is_array($r) && is_numeric($r['number'] ?? null) ? $candidates->pull((int) $r['number']) : null;
+            if (! $task) {
+                continue;
+            }
+            $criteria = is_string($r['criteria'] ?? null) ? trim(Str::limit($r['criteria'], 3000, '')) : '';
+            if ($criteria !== '' && $project->isLinked()) {
+                rescue(fn () => $this->github->appendToIssue($project, $task->number, "## Acceptance criteria\n\n{$criteria}"), null, false);
+            }
+            $task->update(['column' => 'ready', 'triaged_at' => now(), 'question' => null, 'position' => (int) $project->tasks()->where('column', 'ready')->max('position') + 1]);
+        }
+        foreach (is_array($data['questions'] ?? null) ? $data['questions'] : [] as $q) {
+            $task = is_array($q) && is_numeric($q['number'] ?? null) ? $candidates->pull((int) $q['number']) : null;
+            if ($task && is_string($q['question'] ?? null) && trim($q['question']) !== '') {
+                $task->update(['triaged_at' => now(), 'question' => Str::limit(trim($q['question']), 500)]);
+            }
+        }
+        // Cards the droid passed over are looked at again only when they change.
+        foreach ($candidates as $task) {
+            $task->update(['triaged_at' => now()]);
+        }
     }
 
     /** @return list<string> */

@@ -40,7 +40,7 @@ class Run extends Model
     public const ACTIVE = ['queued', 'running'];
 
     /** Runs that answer in a conversation instead of building a task. */
-    public const ASK_KINDS = ['chat', 'plan', 'propose', 'reflect', 'design', 'recruit'];
+    public const ASK_KINDS = ['chat', 'plan', 'propose', 'reflect', 'design', 'recruit', 'triage'];
 
     /** Runs a droid does on a task: build it, fix it after a review, or review its pull request. */
     public const TASK_KINDS = ['build', 'fix', 'review'];

@@ -30,6 +30,23 @@ class RepositoryWriter
         return $this->sync->upsertIssue($project, $issue);
     }
 
+    public function issueBody(Project $project, int $number): string
+    {
+        [$owner, $repo] = $project->ownerAndName();
+
+        return trim((string) $this->github->forProject($project)->get("/repos/{$owner}/{$repo}/issues/{$number}")->json('body'));
+    }
+
+    /** Add a section to the end of an issue's description. */
+    public function appendToIssue(Project $project, int $number, string $text): void
+    {
+        [$owner, $repo] = $project->ownerAndName();
+        $body = $this->issueBody($project, $number);
+        $this->github->forProject($project)->patch("/repos/{$owner}/{$repo}/issues/{$number}", [
+            'body' => trim($body."\n\n".$text),
+        ])->throw();
+    }
+
     public function createMilestone(Project $project, string $name, ?string $dueOn, ?string $goal): int
     {
         [$owner, $repo] = $project->ownerAndName();
