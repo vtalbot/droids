@@ -15,6 +15,7 @@ import {
     FolderKanbanIcon,
     RefreshCwIcon,
     RotateCcwIcon,
+    UnlinkIcon,
 } from 'lucide-react';
 import { Head } from '@inertiajs/react';
 import { toast } from 'sonner';
@@ -1355,6 +1356,7 @@ function DroidCard({
                     </Button>
                 )}
                 {d.status === 'blocked' && <RetryButton d={d} />}
+                {d.task !== null && <UnassignButton d={d} />}
                 <Button
                     size="sm"
                     variant="ghost"
@@ -1395,6 +1397,33 @@ function RetryButton({ d }: { d: Droid }) {
         >
             <RotateCcwIcon />
             Retry
+        </Button>
+    );
+}
+
+/** Take a droid off its task: the card goes back to Ready for droids. */
+function UnassignButton({ d }: { d: Droid }) {
+    const save = useSave();
+    const [busy, setBusy] = useState(false);
+    return (
+        <Button
+            size="sm"
+            variant="ghost"
+            className="h-8"
+            disabled={busy}
+            title={`Take ${d.unit} off #${d.task} and put the card back in Ready`}
+            onClick={async () => {
+                setBusy(true);
+                const res = await save(
+                    'POST',
+                    `/factory/droids/${encodeURIComponent(d.id)}/release`,
+                );
+                setBusy(false);
+                if (res) toast.success(`${d.unit} ${d.name} is off #${d.task}`);
+            }}
+        >
+            <UnlinkIcon />
+            Unassign
         </Button>
     );
 }
@@ -2084,6 +2113,9 @@ function Roster({
                                                 )}
                                                 {d.status === 'blocked' && (
                                                     <RetryButton d={d} />
+                                                )}
+                                                {d.task !== null && (
+                                                    <UnassignButton d={d} />
                                                 )}
                                                 <EditDroidButton d={d} />
                                                 <Tooltip>

@@ -92,6 +92,24 @@ class RunQueue
         ]);
     }
 
+    /** Take a droid off its task: its runs stop, the card goes back to Ready, and the droid docks. */
+    public function release(Droid $droid): void
+    {
+        DB::transaction(function () use ($droid) {
+            $this->cancelFor($droid, "{$droid->unit} {$droid->name} was taken off the task");
+            if ($task = $droid->task) {
+                if ($task->builder_id === $droid->id) {
+                    $task->fill(['builder_id' => null, 'column' => $task->column === 'progress' ? 'ready' : $task->column]);
+                }
+                if ($task->reviewer_id === $droid->id) {
+                    $task->reviewer_id = null;
+                }
+                $task->save();
+            }
+            $droid->update(['status' => 'idle', 'task_id' => null, 'step' => '', 'progress' => 0]);
+        });
+    }
+
     public function cancelFor(Droid $droid, string $reason): void
     {
         Run::where('droid_id', $droid->id)->whereIn('kind', Run::TASK_KINDS)->whereIn('status', Run::ACTIVE)
@@ -210,6 +228,8 @@ class RunQueue
                 'heartbeat_at' => now(),
                 'attempts' => $run->attempts + 1,
                 'error' => null,
+                // Read from the droid now, so a model changed since queueing is the one used.
+                'model' => $this->model($run->droid),
             ]);
             if (! $claimed) {
                 continue; // another worker got it first
@@ -239,7 +259,7 @@ class RunQueue
             'branch' => $run->branch,
             'clone_token' => $linked ? $this->github->freshInstallationToken($project->installation->installation_id ?? 0) : null,
             'provider' => $run->droid->provider,
-            'model' => $this->model($run->droid),
+            'model' => $run->model ?? $this->model($run->droid),
             'subscription' => [
                 'slug' => $subscription->slug,
                 'name' => $subscription->name,
@@ -448,7 +468,7 @@ class RunQueue
 
             return;
         }
-        $run->droid->fill(['status' => 'blocked', 'step' => Str::limit($error, 180)]);
+        $run->droid->fill(['status' => 'blocked', 'step' => Str::limit(($run->model ? "On {$run->model}: " : '').$error, 180)]);
         Activity::create(['droid_id' => $run->droid_id, 'text' => 'Blocked on #'.($run->task->number ?? '?').': '.Str::limit($error, 120)]);
     }
 

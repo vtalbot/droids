@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int|null $subscription_id
  * @property int|null $worker_id
  * @property string $kind
+ * @property string|null $model the model id the worker ran it on
  * @property string|null $topic
  * @property string|null $input
  * @property string $status

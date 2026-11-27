@@ -144,11 +144,21 @@ class DroidController extends Controller
         return $this->state();
     }
 
+    /** Take the droid off its task: the card goes back to Ready for droids. */
+    public function release(Droid $droid, RunQueue $queue): JsonResponse
+    {
+        $number = $droid->task?->number;
+        $queue->release($droid);
+        Activity::create(['droid_id' => $droid->id, 'text' => $number ? "was taken off #{$number}" : 'was docked']);
+
+        return $this->state();
+    }
+
     /** Take a droid out of the factory: its tasks go back to Ready, project discussions keep what it said. */
     public function destroy(Droid $droid, RunQueue $queue): JsonResponse
     {
         DB::transaction(function () use ($droid, $queue) {
-            $queue->cancelFor($droid, "{$droid->unit} {$droid->name} was deleted");
+            $queue->release($droid);
             Run::where('droid_id', $droid->id)->whereIn('status', Run::ACTIVE)
                 ->update(['status' => 'cancelled', 'error' => 'The droid was deleted', 'finished_at' => now()]);
             Task::where('builder_id', $droid->id)->where('column', 'progress')->update(['column' => 'ready']);
