@@ -99,6 +99,29 @@ class CloudController extends Controller
         return $this->state([], 201);
     }
 
+    /** Send email from an environment with Laravel Cloud's Resend integration. */
+    public function email(Request $request, Project $project, CloudSync $sync): JsonResponse
+    {
+        $this->linked($project);
+        $envs = [];
+        foreach ($project->cloud_snapshot['envs'] ?? [] as $env) {
+            $envs[(string) $env['id']] = $env;
+        }
+        $data = $request->validate([
+            'environment' => ['required', 'string', Rule::in(array_keys($envs))],
+            'from_address' => ['required', 'email', 'max:255'],
+            'from_name' => ['required', 'string', 'max:255'],
+        ]);
+        $attached = ($envs[$data['environment']]['email'] ?? null) !== null;
+
+        $this->cloud(function () use ($data, $attached, $project, $sync) {
+            LaravelCloud::fromConnection()->resend($data['environment'], $data['from_address'], $data['from_name'], $attached);
+            $sync->sync($project);
+        });
+
+        return $this->state();
+    }
+
     public function deploymentLogs(Project $project, string $deployment): JsonResponse
     {
         $this->linked($project);

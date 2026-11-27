@@ -41,6 +41,11 @@ const sidebarNavItems: NavItem[] = [
         href: '/settings/cloud',
         icon: null,
     },
+    {
+        title: 'DNS',
+        href: '/settings/services',
+        icon: null,
+    },
 ];
 
 export default function SettingsLayout({ children }: PropsWithChildren) {

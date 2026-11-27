@@ -4,6 +4,7 @@ use App\Http\Controllers\Settings\CloudController;
 use App\Http\Controllers\Settings\GitHubController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
+use App\Http\Controllers\Settings\ServiceController;
 use App\Http\Controllers\Settings\WorkerController;
 /* @chisel-password-confirmation */
 use Illuminate\Auth\Middleware\RequirePassword;
@@ -41,6 +42,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('settings/cloud', [CloudController::class, 'edit'])->name('cloud.edit');
     Route::post('settings/cloud', [CloudController::class, 'store'])->name('cloud.store');
     Route::delete('settings/cloud', [CloudController::class, 'destroy'])->name('cloud.destroy');
+
+    Route::get('settings/services', [ServiceController::class, 'edit'])->name('services.edit');
+    Route::post('settings/services', [ServiceController::class, 'store'])->name('services.store');
+    Route::delete('settings/services/{service}', [ServiceController::class, 'destroy'])->name('services.destroy');
 
     Route::get('settings/workers', [WorkerController::class, 'edit'])->name('workers.edit');
     Route::post('settings/workers', [WorkerController::class, 'store'])->name('workers.store');

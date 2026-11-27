@@ -24,6 +24,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $memory
  * @property int|null $memory_droid_id
  * @property Carbon|null $memory_updated_at
+ * @property string|null $domain the domain whose DNS the project manages on Cloudflare
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
