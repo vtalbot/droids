@@ -538,7 +538,12 @@ function Schedule({ store, bump }: { store: Store; bump: () => void }) {
                                 Paused · {hours('')} h/week
                             </span>
                             <span className="ml-auto">
-                                Outlined cell is now (Wed, 10 PM)
+                                Outlined cell is now (
+                                {new Date().toLocaleString(undefined, {
+                                    weekday: 'short',
+                                    hour: 'numeric',
+                                })}
+                                )
                             </span>
                         </div>
                     </section>

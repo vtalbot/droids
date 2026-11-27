@@ -120,4 +120,13 @@ class FactoryTest extends TestCase
             ->assertJsonPath('store.projects.0.name', 'Fresh start');
         $this->actingAs($user)->patchJson('/factory/projects/fresh', ['name' => ''])->assertUnprocessable();
     }
+
+    public function test_engines_without_a_schedule_get_an_empty_grid(): void
+    {
+        $schedule = $this->actingAs(User::factory()->create())->getJson('/factory/state')->assertOk()->json('store.schedule');
+
+        $this->assertSame(['claude', 'codex'], array_keys($schedule));
+        $this->assertCount(7, $schedule['codex']);
+        $this->assertSame(array_fill(0, 24, ''), $schedule['claude'][6]);
+    }
 }
