@@ -17,7 +17,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { CheckIcon } from 'lucide-react';
+import { CheckIcon, SparklesIcon } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { EngineLogo } from '@/factory/logos';
 import {
     PromptInput,
     PromptInputBody,
@@ -27,7 +29,7 @@ import {
     PromptInputTools,
 } from '@/components/ai-elements/prompt-input';
 import { Shimmer } from '@/components/ai-elements/shimmer';
-import { PROVIDERS, type Candidate, type Provider } from '@/factory/data';
+import { type Candidate, type Provider } from '@/factory/data';
 import { request, useSave } from '@/factory/api';
 import type { Store } from '@/factory/app';
 import { DroidAvatar } from '@/factory/droid-avatar';
@@ -73,18 +75,21 @@ export function AssembleDialog({
     const thinking = sending || !!ask;
     const hr = store.droids.find((d) => d.role === 'HR');
     // Every batch the HR droid proposed, newest first, then the starters.
-    const batches = chat
-        .filter((i) => i.kind === 'candidates')
-        .reverse()
-        .flatMap((i) => (i.kind === 'candidates' ? i.items : []));
-    const candidates = [
-        ...batches,
-        ...STARTERS.filter(
-            (s) =>
-                !batches.some((b) => b.name === s.name) &&
-                (s.role !== 'HR' || !store.droids.some((d) => d.role === 'HR')),
-        ),
-    ];
+    // A name shows once, and never when a droid already has it.
+    const hired = new Set(store.droids.map((d) => d.name.toLowerCase()));
+    const seen = new Set<string>();
+    const candidates: (Candidate & { starter?: boolean })[] = [
+        ...chat
+            .filter((i) => i.kind === 'candidates')
+            .reverse()
+            .flatMap((i) => (i.kind === 'candidates' ? i.items : [])),
+        ...STARTERS.map((c) => ({ ...c, starter: true })),
+    ].filter((c) => {
+        const key = c.name.toLowerCase();
+        if (hired.has(key) || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
     const lastAsk = chat.map((i) => i.kind).lastIndexOf('user');
     const answer = lastAsk >= 0 ? chat.slice(lastAsk + 1) : [];
     const note = answer.find((i) => i.kind === 'agent');
@@ -179,26 +184,48 @@ export function AssembleDialog({
                                     on && 'border-ring bg-accent',
                                 )}
                             >
-                                <span className="flex items-center gap-2.5">
+                                <span className="flex items-start gap-2.5">
                                     <DroidAvatar
                                         provider={c.provider}
                                         status="idle"
                                         seed={look}
-                                        className="size-9"
+                                        className="size-10"
                                     />
-                                    <span className="min-w-0 leading-tight">
-                                        <span className="block font-medium">
+                                    <span className="grid min-w-0 gap-1">
+                                        <span className="flex items-baseline gap-1.5 font-medium">
                                             {c.name}
                                             {on && (
-                                                <span className="ml-1.5 font-mono text-xs font-normal text-muted-foreground">
+                                                <span className="font-mono text-xs font-normal text-muted-foreground">
                                                     {nextUnit(c.provider)}
                                                 </span>
                                             )}
                                         </span>
-                                        <span className="block text-xs text-muted-foreground">
-                                            {c.role} ·{' '}
-                                            {PROVIDERS[c.provider].short}{' '}
-                                            {c.model}
+                                        <span className="flex flex-wrap gap-1">
+                                            <Badge variant="secondary">
+                                                {c.role}
+                                            </Badge>
+                                            <Badge variant="outline">
+                                                <EngineLogo
+                                                    provider={c.provider}
+                                                    className="size-3"
+                                                />
+                                                {c.model}
+                                            </Badge>
+                                            {c.starter ? (
+                                                <Badge
+                                                    variant="outline"
+                                                    className="text-muted-foreground"
+                                                >
+                                                    Starter
+                                                </Badge>
+                                            ) : (
+                                                <Badge variant="outline">
+                                                    <SparklesIcon />
+                                                    {hr
+                                                        ? `From ${hr.name}`
+                                                        : 'Proposed'}
+                                                </Badge>
+                                            )}
                                         </span>
                                     </span>
                                     {on && (

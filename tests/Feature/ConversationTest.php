@@ -226,21 +226,25 @@ class ConversationTest extends TestCase
         $this->assertStringContainsString('You are the HR droid', $job['prompt']);
         $this->assertStringContainsString('- CL-01 Cog: Planner on claude Opus 5.5, on Droids', $job['prompt']);
         $this->assertStringContainsString('- Droids (vtalbot/droids): 1 open issues, labels: ui (1), bug (1)', $job['prompt']);
-        $this->assertStringContainsString('You already proposed: Probe.', $job['prompt']);
+        $this->assertStringContainsString('Names already taken (crew, starters and earlier candidates): Cog, Mira, Bolt, Lumen, Atlas, Iris, Probe.', $job['prompt']);
         $this->assertStringContainsString('Builder, Reviewer, Designer, Tester, Planner, Docs, HR', $job['prompt']);
         $this->assertStringContainsString('I need a security reviewer.', $job['prompt']);
 
         $this->finish($job['id'], ['status' => 'succeeded', 'summary' => '{"message": "Two droids.", "candidates": [
             {"name": "Warden", "role": "Reviewer", "provider": "claude", "model": "Opus 5.5", "pitch": "I review.", "why": "You asked.", "instructions": "Check auth."},
-            {"name": "Bolt", "role": "Wizard", "provider": "codex", "model": "GPT-9", "pitch": "I build."},
-            {"name": "", "role": "Builder"}
+            {"name": "Rivet", "role": "Wizard", "provider": "codex", "model": "GPT-9", "pitch": "I build."},
+            {"name": "", "role": "Builder"},
+            {"name": "bolt", "role": "Builder", "pitch": "A starter name."},
+            {"name": "Cog", "role": "Planner", "pitch": "A crew name."},
+            {"name": "Probe", "role": "Tester", "pitch": "Proposed before."},
+            {"name": "warden", "role": "Reviewer", "pitch": "Twice in one batch."}
         ]}']);
 
         $chat = $this->getJson('/factory/state')->json('store.chats.recruit');
         $this->assertSame(['candidates', 'user', 'agent', 'candidates'], array_column($chat, 'kind'));
         $this->assertSame([
             ['name' => 'Warden', 'role' => 'Reviewer', 'provider' => 'claude', 'model' => 'Opus 5.5', 'pitch' => 'I review.', 'why' => 'You asked.', 'instructions' => 'Check auth.'],
-            ['name' => 'Bolt', 'role' => 'Builder', 'provider' => 'codex', 'model' => 'GPT-5.1-Codex', 'pitch' => 'I build.', 'why' => '', 'instructions' => ''],
+            ['name' => 'Rivet', 'role' => 'Builder', 'provider' => 'codex', 'model' => 'GPT-5.1-Codex', 'pitch' => 'I build.', 'why' => '', 'instructions' => ''],
         ], $chat[3]['items']);
     }
 
