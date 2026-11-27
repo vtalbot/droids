@@ -109,4 +109,15 @@ class FactoryTest extends TestCase
         $this->assertEquals(['claude' => 0, 'codex' => 1.25], end($stats['spend']));
         $this->assertEquals(1, $stats['ci']);
     }
+
+    public function test_a_project_can_be_renamed(): void
+    {
+        Project::create(['slug' => 'fresh', 'name' => 'Fresh', 'repo' => 'vtalbot/fresh', 'board' => 'Roadmap', 'color' => 'teal']);
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->patchJson('/factory/projects/fresh', ['name' => '  Fresh start '])
+            ->assertOk()
+            ->assertJsonPath('store.projects.0.name', 'Fresh start');
+        $this->actingAs($user)->patchJson('/factory/projects/fresh', ['name' => ''])->assertUnprocessable();
+    }
 }

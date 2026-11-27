@@ -53,4 +53,15 @@ class ProjectController extends Controller
 
         return $this->state(['project' => $project->slug, 'warning' => $warning], 201);
     }
+
+    public function update(Request $request, Project $project): JsonResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:80'],
+        ]);
+
+        $project->update(['name' => trim($data['name'])]);
+
+        return $this->state();
+    }
 }

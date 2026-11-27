@@ -19,6 +19,7 @@ import {
     LightbulbIcon,
     NotebookPenIcon,
     PaletteIcon,
+    PencilIcon,
     PlusIcon,
     TrendingDownIcon,
     TrendingUpIcon,
@@ -113,6 +114,90 @@ const taskCol = (store: Store, pid: string, t: { n: number; done?: boolean }) =>
     store.issues.find((i) => i.project === pid && i.n === t.n)?.col ??
     (t.done ? 'done' : 'backlog');
 
+/** Rename a project. The repository and its slug stay the same. */
+function RenameProject({ p }: { p: P }) {
+    const save = useSave();
+    const [open, setOpen] = useState(false);
+    const [name, setName] = useState(p.name);
+    const [busy, setBusy] = useState(false);
+    const submit = async () => {
+        const n = name.trim();
+        if (!n || busy) return;
+        setBusy(true);
+        const res = await save(
+            'PATCH',
+            `/factory/projects/${encodeURIComponent(p.id)}`,
+            { name: n },
+        );
+        setBusy(false);
+        if (res) {
+            setOpen(false);
+            toast.success(`Renamed to ${n}`);
+        }
+    };
+    return (
+        <>
+            <Button
+                variant="outline"
+                onClick={() => {
+                    setName(p.name);
+                    setOpen(true);
+                }}
+            >
+                <PencilIcon />
+                Rename
+            </Button>
+            <Dialog open={open} onOpenChange={setOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Rename project</DialogTitle>
+                        <DialogDescription>
+                            The name shows in the sidebar, on the board and to
+                            the droids. The repository stays{' '}
+                            <span className="font-mono">{p.repo}</span>.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form
+                        className="grid gap-2"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            void submit();
+                        }}
+                    >
+                        <Label htmlFor="project-name">Name</Label>
+                        <Input
+                            id="project-name"
+                            value={name}
+                            maxLength={80}
+                            autoFocus
+                            onChange={(e) => setName(e.target.value)}
+                        />
+                        <DialogFooter className="mt-2">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setOpen(false)}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                type="submit"
+                                disabled={
+                                    busy ||
+                                    !name.trim() ||
+                                    name.trim() === p.name
+                                }
+                            >
+                                Save
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+        </>
+    );
+}
+
 export function ProjectView(props: Props) {
     const { store, project } = props;
     if (project === 'all') return <Portfolio {...props} />;
@@ -134,6 +219,7 @@ export function ProjectView(props: Props) {
                         </h1>
                     </div>
                     <div className="flex flex-wrap gap-2">
+                        <RenameProject p={p} />
                         <Button
                             variant="outline"
                             onClick={() => props.propose(p.id)}

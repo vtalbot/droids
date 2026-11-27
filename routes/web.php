@@ -19,6 +19,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('state', Factory\StateController::class)->name('state');
 
         Route::post('projects', [Factory\ProjectController::class, 'store'])->name('projects.store');
+        Route::patch('projects/{project:slug}', [Factory\ProjectController::class, 'update'])->name('projects.update');
         Route::post('projects/{project:slug}/tasks', [Factory\TaskController::class, 'store'])->name('tasks.store');
         Route::patch('projects/{project:slug}/tasks/{number}', [Factory\TaskController::class, 'update'])->whereNumber('number')->name('tasks.update');
         Route::post('projects/{project:slug}/tasks/{number}/assign', [Factory\TaskController::class, 'assign'])->whereNumber('number')->name('tasks.assign');

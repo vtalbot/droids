@@ -71,10 +71,7 @@ export function AssembleDialog({
     const ask = store.asks?.recruit;
     const chat = store.chats.recruit ?? [];
     const thinking = sending || !!ask;
-    const hr =
-        store.droids.find((d) => d.role === 'HR') ??
-        store.droids.find((d) => d.role === 'Planner') ??
-        store.droids[0];
+    const hr = store.droids.find((d) => d.role === 'HR');
     // Every batch the HR droid proposed, newest first, then the starters.
     const batches = chat
         .filter((i) => i.kind === 'candidates')
@@ -95,14 +92,31 @@ export function AssembleDialog({
 
     const request = async (msg: string) => {
         const t = msg.trim();
-        if (!hr || !t || thinking) return;
+        if (!t || thinking) return;
         setText('');
         setSending(true);
-        const res = await save(
-            'POST',
-            `/factory/droids/${encodeURIComponent(hr.id)}/ask`,
-            { kind: 'recruit', text: t },
-        );
+        // No HR droid yet: hire the HR starter first, then ask her.
+        let id = hr?.id;
+        if (!id) {
+            const mira = STARTERS[0];
+            const made = await save('POST', '/factory/droids', {
+                name: mira.name,
+                provider: mira.provider,
+                model: mira.model,
+                role: mira.role,
+                autonomy: 'pr',
+                instructions: mira.instructions,
+                seed: nextSeed,
+            });
+            id = made ? (made.droid as string) : undefined;
+        }
+        const res =
+            id &&
+            (await save(
+                'POST',
+                `/factory/droids/${encodeURIComponent(id)}/ask`,
+                { kind: 'recruit', text: t },
+            ));
         if (!res) setText(t);
         setSending(false);
     };
@@ -142,7 +156,7 @@ export function AssembleDialog({
                     <DialogDescription>
                         {hr
                             ? `Tell ${hr.unit} ${hr.name} what you need and pick from the candidates. Droids join a project when you give them a task.`
-                            : 'Pick a starter droid. Hire an HR droid first and it will propose candidates from what you ask for.'}
+                            : 'Describe the droid you need and an HR droid proposes candidates, or pick a starter. Droids join a project when you give them a task.'}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -224,29 +238,29 @@ export function AssembleDialog({
                     )
                 )}
 
-                {hr && (
-                    <PromptInput onSubmit={(m) => void request(m.text)}>
-                        <PromptInputBody>
-                            <PromptInputTextarea
-                                value={text}
-                                onChange={(e) => setText(e.target.value)}
-                                placeholder="Describe the droid you need, e.g. a reviewer who knows Laravel security…"
-                                className="min-h-12"
-                            />
-                        </PromptInputBody>
-                        <PromptInputFooter>
-                            <PromptInputTools>
-                                <span className="px-2 text-xs text-muted-foreground">
-                                    {hr.unit} {hr.name} proposes new candidates
-                                </span>
-                            </PromptInputTools>
-                            <PromptInputSubmit
-                                status={thinking ? 'submitted' : 'ready'}
-                                disabled={thinking || !text.trim()}
-                            />
-                        </PromptInputFooter>
-                    </PromptInput>
-                )}
+                <PromptInput onSubmit={(m) => void request(m.text)}>
+                    <PromptInputBody>
+                        <PromptInputTextarea
+                            value={text}
+                            onChange={(e) => setText(e.target.value)}
+                            placeholder="Describe the droid you need, e.g. a reviewer who knows Laravel security…"
+                            className="min-h-12"
+                        />
+                    </PromptInputBody>
+                    <PromptInputFooter>
+                        <PromptInputTools>
+                            <span className="px-2 text-xs text-muted-foreground">
+                                {hr
+                                    ? `${hr.unit} ${hr.name} (HR) proposes new candidates`
+                                    : 'Mira joins as your HR droid and proposes candidates'}
+                            </span>
+                        </PromptInputTools>
+                        <PromptInputSubmit
+                            status={thinking ? 'submitted' : 'ready'}
+                            disabled={thinking || !text.trim()}
+                        />
+                    </PromptInputFooter>
+                </PromptInput>
 
                 <DialogFooter className="items-center">
                     {picked && (
