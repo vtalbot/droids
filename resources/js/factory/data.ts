@@ -24,7 +24,7 @@ export type Droid = {
     model: string;
     role: string;
     status: Status;
-    /** The project the droid is working on; null until it is given a task. */
+    /** The project the droid is on: set from the project's crew or the Droids table; null when on none. */
     project: string | null;
     task: number | null;
     step: string;

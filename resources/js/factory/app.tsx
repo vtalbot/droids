@@ -113,6 +113,7 @@ import {
 } from '@/factory/subscriptions';
 import { EngineLogo } from '@/factory/logos';
 import { ProjectView } from '@/factory/project';
+import { DroidProjectSelect } from '@/factory/crew';
 import { cloudHealth } from '@/factory/cloud';
 import { AssembleDialog, ConnectDialog } from '@/factory/dialogs';
 
@@ -767,6 +768,7 @@ export default function FactoryApp({
                                 propose={propose}
                                 designWith={designWith}
                                 discuss={discuss}
+                                openChat={openChat}
                             />
                         )}
                         {view === 'board' && <Board {...ctx} />}
@@ -1769,7 +1771,7 @@ function Roster({
             </div>
             <div className="p-4 md:p-6">
                 <div className="overflow-x-auto rounded-xl border">
-                    <Table className="min-w-[980px]">
+                    <Table className="min-w-[1120px]">
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Droid</TableHead>
@@ -1863,10 +1865,11 @@ function Roster({
                                         <TableCell>
                                             <StatusBadge s={d.status} />
                                         </TableCell>
-                                        <TableCell className="font-mono text-xs">
-                                            {d.project
-                                                ? proj(d.project).repo
-                                                : '—'}
+                                        <TableCell>
+                                            <DroidProjectSelect
+                                                store={store}
+                                                d={d}
+                                            />
                                         </TableCell>
                                         <TableCell className="max-w-[280px] whitespace-normal">
                                             {i ? (

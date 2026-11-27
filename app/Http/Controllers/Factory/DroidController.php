@@ -66,7 +66,18 @@ class DroidController extends Controller
             'model' => ['sometimes', 'string', 'max:60'],
             'add_rules' => ['sometimes', 'array', 'max:20'],
             'add_rules.*' => ['string', 'max:300'],
+            'project' => ['sometimes', 'nullable', 'string', 'exists:projects,slug'],
         ]);
+
+        if (array_key_exists('project', $data)) {
+            $project = $data['project'] !== null ? Project::where('slug', $data['project'])->first() : null;
+            if ($project?->id !== $droid->project_id) {
+                abort_if($droid->task_id !== null, 422, "{$droid->unit} {$droid->name} is on an issue. Unassign it first, then move it to another project.");
+                $from = $droid->project;
+                $droid->project_id = $project?->id;
+                Activity::create(['droid_id' => $droid->id, 'text' => $project ? "joined {$project->name}" : "left {$from?->name}"]);
+            }
+        }
 
         if (isset($data['model'])) {
             $droid->model = $data['model'];

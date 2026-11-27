@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Activity;
 use App\Models\ChatMessage;
 use App\Models\Droid;
 use App\Models\GithubApp;
@@ -256,6 +257,22 @@ class ConversationTest extends TestCase
         $mira = Droid::where('name', 'Mira')->sole();
         $this->assertNull($mira->project_id);
         $this->assertSame('HR', $mira->role);
+    }
+
+    public function test_a_droid_can_be_moved_to_a_project_and_off_it(): void
+    {
+        $mira = Droid::create(['slug' => 'cl09', 'unit' => 'CL-09', 'name' => 'Mira', 'provider' => 'claude', 'model' => 'Opus 5.5', 'role' => 'Builder']);
+
+        $this->patchJson('/factory/droids/cl09', ['project' => 'droids'])->assertOk()->assertJsonPath('store.droids.1.project', 'droids');
+        $this->assertSame($this->project->id, $mira->refresh()->project_id);
+        $this->patchJson('/factory/droids/cl09', ['project' => null])->assertOk();
+        $this->assertNull($mira->refresh()->project_id);
+        $this->patchJson('/factory/droids/cl09', ['project' => 'nope'])->assertJsonValidationErrors('project');
+        $this->assertSame(['joined Droids', 'left Droids'], Activity::where('droid_id', $mira->id)->orderBy('id')->pluck('text')->all());
+
+        $this->droid->update(['task_id' => $this->project->tasks()->first()->id]);
+        $this->patchJson('/factory/droids/cog', ['project' => null])->assertUnprocessable();
+        $this->assertSame($this->project->id, $this->droid->refresh()->project_id);
     }
 
     public function test_questions_are_answered_even_in_paused_hours(): void

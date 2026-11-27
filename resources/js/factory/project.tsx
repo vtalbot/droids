@@ -75,6 +75,7 @@ import { CloudPanel, cloudHealth } from '@/factory/cloud';
 import { DesignPanel } from '@/factory/design';
 import { MemoryPanel } from '@/factory/memory';
 import { DnsPanel } from '@/factory/dns';
+import { CrewCard } from '@/factory/crew';
 import { cn } from '@/lib/utils';
 import { useSave } from '@/factory/api';
 import type { Store } from '@/factory/app';
@@ -91,6 +92,7 @@ type Props = {
     propose: (pid: string) => void;
     designWith: (pid: string) => void;
     discuss: (pid: string) => void;
+    openChat: (id: string) => void;
 };
 
 const engineCfg = {
@@ -391,7 +393,7 @@ function emptyStats(p: P): Stats {
     };
 }
 
-function Overview({ store, p }: Props & { p: P }) {
+function Overview({ store, p, openChat }: Props & { p: P }) {
     const st = store.stats[p.id] ?? emptyStats(p);
     // Nothing closed or run yet: show dashes instead of zeros that look like data.
     const fresh =
@@ -455,6 +457,7 @@ function Overview({ store, p }: Props & { p: P }) {
                     note={health.note}
                 />
             </div>
+            <CrewCard store={store} pid={p.id} openChat={openChat} />
             {fresh && (
                 <p className="text-sm text-muted-foreground">
                     No history yet: these charts fill in as droids close issues
