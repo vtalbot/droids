@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Factory;
 
+use App\Factory\Autopilot;
 use App\GitHub\RepositorySync;
 use App\Models\GithubInstallation;
 use App\Models\Project;
@@ -68,5 +69,15 @@ class ProjectController extends Controller
         $project->update($data);
 
         return $this->state();
+    }
+
+    /** Look at Ideas again: cards waiting on the person get another triage, which can send the question to a droid. */
+    public function triage(Project $project, Autopilot $autopilot): JsonResponse
+    {
+        $reset = $project->tasks()->where('column', 'backlog')->whereNull('builder_id')
+            ->whereNotNull('question')->whereNull('question_for')->update(['triaged_at' => null]);
+        $started = $autopilot->triage($project);
+
+        return $this->state(['reset' => $reset, 'started' => $started]);
     }
 }

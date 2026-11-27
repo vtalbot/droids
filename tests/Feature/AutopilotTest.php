@@ -107,6 +107,61 @@ class AutopilotTest extends TestCase
         $this->assertNull($this->project->tasks()->where('number', 3)->value('priority'));
     }
 
+    public function test_triage_sends_a_question_to_the_crew_droid_that_can_answer_it(): void
+    {
+        Droid::create(['slug' => 'iris', 'unit' => 'CL-02', 'name' => 'Iris', 'provider' => 'claude', 'model' => 'Sonnet 5.5', 'role' => 'Designer', 'project_id' => $this->project->id]);
+        (new Autopilot(app(AssignDroid::class)))->tick();
+        $job = $this->withToken($this->token)->postJson('/api/worker/claim', ['subscriptions' => ['claude-max']])->json('run');
+        $this->assertStringContainsString('Designer (Iris)', $job['prompt']);
+        $this->assertStringContainsString('"to"', $job['prompt']);
+        $this->withToken($this->token)->postJson("/api/worker/runs/{$job['id']}/finish", ['status' => 'succeeded', 'summary' => '{"message": "Asked the Designer about #1.",
+            "ready": [], "questions": [{"number": 1, "priority": "medium", "to": "designer", "question": "Where does the toggle go?"}, {"number": 2, "to": "person", "question": "Which page is slow?"}]}'])->assertOk();
+
+        $dark = $this->project->tasks()->where('number', 1)->first();
+        $this->assertSame(['Designer', 'Where does the toggle go?'], [$dark->question_for, $dark->question]);
+        $this->assertNull($this->project->tasks()->where('number', 2)->value('question_for'));
+        $this->assertSame('Designer', collect($this->getJson('/factory/state')->json('store.issues'))->firstWhere('n', 1)['questionFor']);
+        $ask = Run::where('kind', 'answer')->sole();
+        $this->assertSame(['answer:droids:1', 'Where does the toggle go?', 'iris'], [$ask->topic, $ask->input, $ask->droid->slug]);
+
+        $job = $this->withToken($this->token)->postJson('/api/worker/claim', ['subscriptions' => ['claude-max']])->json('run');
+        $this->assertSame($ask->id, $job['id']);
+        $this->assertStringContainsString('#1 Add dark mode', $job['prompt']);
+        $this->assertStringContainsString('Only you can decide', $job['prompt']);
+        $this->withToken($this->token)->postJson("/api/worker/runs/{$job['id']}/finish", ['status' => 'succeeded', 'summary' => '{"message": "On #1: in the settings menu, under Appearance."}'])->assertOk();
+
+        $dark->refresh();
+        $this->assertSame('On #1: in the settings menu, under Appearance.', $dark->answer);
+        $this->assertNull($dark->triaged_at);
+        $chat = $this->getJson('/factory/state')->json('store.chats')['discuss:droids'];
+        $this->assertSame('On #1: in the settings menu, under Appearance.', end($chat)['text']);
+
+        (new Autopilot(app(AssignDroid::class)))->tick();
+        $prompt = $this->withToken($this->token)->postJson('/api/worker/claim', ['subscriptions' => ['claude-max']])->json('run.prompt');
+        $this->assertStringContainsString('You asked earlier the Designer: Where does the toggle go?', $prompt);
+        $this->assertStringContainsString('The Designer answered: On #1: in the settings menu', $prompt);
+        $this->assertStringNotContainsString('#2 Make it faster', $prompt, 'the person has not answered #2');
+
+        // A second question on the same card goes to the person: no loops between droids.
+        $id = Run::where('kind', 'triage')->latest('id')->value('id');
+        $this->withToken($this->token)->postJson("/api/worker/runs/{$id}/finish", ['status' => 'succeeded', 'summary' => '{"message": "One more on #1.",
+            "ready": [], "questions": [{"number": 1, "to": "Designer", "question": "Which icon?"}]}'])->assertOk();
+        $this->assertNull($this->project->tasks()->where('number', 1)->value('question_for'));
+        $this->assertSame(1, Run::where('kind', 'answer')->count());
+    }
+
+    public function test_triage_again_brings_back_cards_waiting_on_the_person(): void
+    {
+        $this->project->tasks()->update(['triaged_at' => now(), 'question' => 'Which page is slow?']);
+        $this->project->tasks()->where('number', 2)->update(['question_for' => 'Designer']);
+        $this->assertSame(0, Run::count());
+
+        $this->postJson('/factory/projects/droids/triage')->assertOk()->assertJson(['reset' => 1, 'started' => true]);
+        $prompt = $this->withToken($this->token)->postJson('/api/worker/claim', ['subscriptions' => ['claude-max']])->json('run.prompt');
+        $this->assertStringContainsString('#1 Add dark mode', $prompt);
+        $this->assertStringNotContainsString('#2 Make it faster', $prompt, 'a droid is already on #2');
+    }
+
     public function test_autopilot_is_switched_per_project_and_only_the_person_asks_questions(): void
     {
         $this->patchJson('/factory/projects/droids', ['auto_build' => true])->assertOk()

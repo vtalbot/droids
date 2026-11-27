@@ -65,6 +65,7 @@ class FactoryState
                 'col' => $t->column,
                 'labels' => $t->labels ?? [],
                 'question' => $t->question,
+                'questionFor' => $t->question ? $t->question_for : null,
                 'priority' => $t->priorityName(),
                 'builder' => $t->builder_id ? $droidSlugs[$t->builder_id] : null,
                 'reviewer' => $t->reviewer_id ? $droidSlugs[$t->reviewer_id] : null,

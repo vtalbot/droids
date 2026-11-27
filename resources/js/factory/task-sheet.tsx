@@ -291,13 +291,15 @@ export function TaskSheet({
                             {i.question && i.col === 'backlog' && (
                                 <div className="rounded-lg border border-needs/30 bg-needs/10 p-3 text-sm">
                                     <div className="font-medium text-needs">
-                                        The planner needs an answer before this
-                                        is ready
+                                        {i.questionFor
+                                            ? `Waiting on the ${i.questionFor} before this is ready`
+                                            : 'Triage needs your answer before this is ready'}
                                     </div>
                                     <p className="mt-1">{i.question}</p>
                                     <p className="mt-1 text-xs text-muted-foreground">
-                                        Answer in the project discussion, and
-                                        the card is triaged again.
+                                        {i.questionFor
+                                            ? `The ${i.questionFor} answers in the project discussion, and the card is triaged again.`
+                                            : 'Answer in the project discussion, and the card is triaged again.'}
                                     </p>
                                 </div>
                             )}

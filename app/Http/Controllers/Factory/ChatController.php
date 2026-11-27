@@ -18,7 +18,7 @@ class ChatController extends Controller
     {
         $data = $request->validate([
             // Triage is started by the autopilot and suggestions by a form, not asked for here.
-            'kind' => ['required', Rule::in(array_diff(Run::ASK_KINDS, ['triage', 'suggest', 'unblock']))],
+            'kind' => ['required', Rule::in(array_diff(Run::ASK_KINDS, ['triage', 'suggest', 'unblock', 'answer']))],
             'project' => ['nullable', 'string', Rule::requiredIf(in_array($request->input('kind'), ['plan', 'propose', 'design'], true))],
             'text' => ['required', 'string', 'max:8000'],
             'intro' => ['nullable', 'string', 'max:4000'],

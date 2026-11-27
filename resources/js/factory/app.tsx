@@ -1822,7 +1822,10 @@ function Board({
                                         </button>
                                         {i.question && i.col === 'backlog' && (
                                             <p className="rounded-md bg-needs/10 px-2 py-1 text-xs text-needs">
-                                                Question: {i.question}
+                                                {i.questionFor
+                                                    ? `Asked the ${i.questionFor}: `
+                                                    : 'Question for you: '}
+                                                {i.question}
                                             </p>
                                         )}
                                         {store.prs[`${i.project}:${i.n}`] && (

@@ -438,7 +438,23 @@ function Autopilot({
     const save = useSave();
     const p = store.projects.find((x) => x.id === pid);
     if (!p) return null;
-    const planner = crew.find((d) => d.role === 'Planner') ?? crew[0];
+    const planner =
+        crew.find((d) => d.role === 'Triager') ??
+        crew.find((d) => d.role === 'Planner') ??
+        crew[0];
+    const waiting = store.issues.filter(
+        (i) =>
+            i.project === pid &&
+            i.col === 'backlog' &&
+            i.question &&
+            !i.questionFor,
+    ).length;
+    const retriage = () =>
+        void save(
+            'POST',
+            `/factory/projects/${encodeURIComponent(pid)}/triage`,
+            {},
+        );
     const builders = crew.filter((d) => d.role === 'Builder').length;
     const toggle = (key: 'auto_triage' | 'auto_build', v: boolean) =>
         void save('PATCH', `/factory/projects/${encodeURIComponent(pid)}`, {
@@ -456,11 +472,24 @@ function Autopilot({
                     Triage Ideas
                     <span className="block text-xs text-muted-foreground">
                         {planner
-                            ? `${planner.unit} ${planner.name} reads each new card, adds acceptance criteria and moves it to Ready for droids, or asks you in the project discussion.`
-                            : 'Add a Planner droid to the crew to triage new cards.'}
+                            ? `${planner.unit} ${planner.name} reads each new card, adds acceptance criteria and moves it to Ready for droids. Questions go to the crew droid that can answer them, or to you in the project discussion.`
+                            : 'Add a Triager or Planner droid to the crew to triage new cards.'}
                     </span>
                 </span>
             </label>
+            {planner && waiting > 0 && (
+                <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
+                    <span className="text-muted-foreground">
+                        {waiting === 1
+                            ? '1 card in Ideas waits on your answer.'
+                            : `${waiting} cards in Ideas wait on your answer.`}{' '}
+                        Triage again to let the crew answer what it can.
+                    </span>
+                    <Button size="sm" variant="outline" onClick={retriage}>
+                        Triage again
+                    </Button>
+                </div>
+            )}
             <label className="flex items-start gap-3 text-sm">
                 <Switch
                     className="mt-0.5"
