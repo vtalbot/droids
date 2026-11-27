@@ -121,7 +121,8 @@ class MemoryTest extends TestCase
         $planner = Droid::create(['slug' => 'atlas', 'unit' => 'CL-02', 'name' => 'Atlas', 'provider' => 'claude', 'model' => 'Opus 5.5', 'role' => 'Planner']);
         $this->postJson('/factory/droids/atlas/ask', ['kind' => 'plan', 'project' => 'droids', 'text' => 'Plan']);
         $job = $this->claim();
-        $this->assertStringContainsString('put lasting facts the next droid should know in a "remember" list', $job['prompt']);
+        $this->assertStringContainsString('what the person decided or told you here', $job['prompt']);
+        $this->assertStringContainsString('"next": ["..."], "remember": ["..."]}', $job['prompt']);
 
         $this->finish($job['id'], ['status' => 'succeeded', 'summary' => '{"message": "Planned.", "remember": ["The API lives in app/Api.", "", 42]}']);
 
@@ -129,6 +130,20 @@ class MemoryTest extends TestCase
         $this->assertStringStartsWith(Memory::HEADER, $memory);
         $this->assertStringContainsString('- The API lives in app/Api. (CL-02 Atlas, '.now()->toDateString().')', $memory);
         $this->assertSame($planner->id, $this->project->fresh()->memory_droid_id);
+        $reply = $this->getJson('/factory/state')->json('store.chats')['plan:droids'];
+        $this->assertSame(['The API lives in app/Api.'], end($reply)['remembered']);
+    }
+
+    public function test_a_droids_own_chat_adds_to_the_memory_of_the_project_it_is_on(): void
+    {
+        $this->builder->update(['project_id' => $this->project->id]);
+        $this->postJson('/factory/droids/cog/ask', ['kind' => 'chat', 'text' => 'We use Pest from now on.'])->assertCreated();
+        $job = $this->claim();
+        $this->assertStringContainsString('"remember": ["..."]', $job['prompt']);
+
+        $this->finish($job['id'], ['status' => 'succeeded', 'summary' => '{"message": "Noted.", "remember": ["Tests are written with Pest."]}']);
+
+        $this->assertStringContainsString('- Tests are written with Pest. (CL-01 Cog', (string) $this->project->fresh()->memory);
     }
 
     public function test_reviewers_remember_too(): void

@@ -46,11 +46,11 @@ class Memory
         $empty = trim((string) $project->memory) === '';
 
         return ['',
-            'Shared memory: '.self::FILE.' holds notes the droids on this project keep for each other: conventions, commands that work, gotchas and decisions.'
+            'Shared memory: '.self::FILE.' holds notes the droids on this project keep for each other: conventions, commands that work, gotchas, and what the person decided.'
             .($empty ? ' It is empty so far.' : ' Read it before you start.'),
             $writable
                 ? 'When you learn something the next droid should know, add a short bullet to that file, with today\'s date. Only lasting facts: do not log what you did, and keep it short. It is not part of the repository: never commit it.'
-                : 'To add to it, put lasting facts the next droid should know in a "remember" list in your JSON answer, as short sentences. Leave it out when there is nothing new.',
+                : 'To add to it, put what the next droid on this project should know in a "remember" list in your JSON answer, as short sentences that make sense on their own: facts about the code, and what the person decided or told you here (priorities, scope, plans agreed, preferences, things to avoid). Leave out what is already in it, and leave the list empty when nothing new came up.',
         ];
     }
 
@@ -83,24 +83,27 @@ class Memory
      * Append facts a droid listed in its JSON answer.
      *
      * @param  list<string>  $facts
+     * @return list<string> the facts added
      */
-    public function remember(Project $project, Droid $droid, array $facts): bool
+    public function remember(Project $project, Droid $droid, array $facts): array
     {
         $lines = [];
+        $added = [];
         $current = (string) $this->content($project);
         foreach (array_slice($facts, 0, 8) as $fact) {
             $fact = Str::limit(trim(preg_replace('/\s+/', ' ', $fact) ?? ''), 300);
-            if ($fact !== '' && ! str_contains($current, $fact)) {
+            if ($fact !== '' && ! str_contains($current, $fact) && ! in_array($fact, $added, true)) {
                 $lines[] = "- {$fact} ({$droid->unit} {$droid->name}, ".now()->toDateString().')';
+                $added[] = $fact;
             }
         }
         if ($lines === []) {
-            return false;
+            return [];
         }
 
         $this->store($project, $droid, rtrim($current)."\n".implode("\n", $lines)."\n");
 
-        return true;
+        return $added;
     }
 
     /**

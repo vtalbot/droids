@@ -85,7 +85,7 @@ class Conversation
         if (! $design) {
             $lines = [...$lines, ...$this->design->promptLines($project, 'conversation')];
         }
-        $lines = [...$lines, ...$this->memory->promptLines($project, $design)];
+        $lines = [...$lines, ...$this->memory->promptLines($this->memoryProject($run), $design)];
 
         $history = $this->history($run);
         if ($history !== []) {
@@ -98,7 +98,7 @@ class Conversation
             (string) $run->input,
             '',
             'Answer with one JSON object and nothing else: no code fence, no text around it. Its shape:',
-            $this->shape($run->kind, $project !== null),
+            $this->shape($run->kind, $project !== null, $this->memoryProject($run) !== null),
             'Write "message" in Markdown, in plain conversational sentences. Put what you read or checked in "reasoning", in one or two sentences.',
         ]);
     }
@@ -290,9 +290,9 @@ class Conversation
 
     private const DRAFT = '{"title": "...", "body": "...", "labels": ["..."], "engine": "claude" or "codex", "size": "S" or "M" or "L", "milestone": "..." or null, "feature": "..." or null}';
 
-    private function shape(string $kind, bool $project = false): string
+    private function shape(string $kind, bool $project = false, bool $memory = false): string
     {
-        return match ($kind) {
+        $shape = match ($kind) {
             'plan' => '{"message": "...", "reasoning": "...", "drafts": ['.self::DRAFT.'], "next": ["..."]}',
             'chat' => $project
                 ? '{"message": "...", "reasoning": "...", "milestones": [{"title": "...", "goal": "...", "due": "YYYY-MM-DD" or null}], "drafts": ['.self::DRAFT.'], "next": ["..."]}'
@@ -302,6 +302,9 @@ class Conversation
             'recruit' => '{"message": "...", "reasoning": "...", "candidates": [{"name": "...", "role": "...", "provider": "claude" or "codex", "model": "...", "pitch": "...", "why": "...", "instructions": "..."}]}',
             default => '{"message": "...", "reasoning": "..."}',
         };
+
+        // Every run with a project can add to its shared memory.
+        return $memory && $kind !== 'design' ? substr($shape, 0, -1).', "remember": ["..."]}' : $shape;
     }
 
     /** @return list<string> */
@@ -346,14 +349,17 @@ class Conversation
             return;
         }
 
-        if ($run->project && $run->kind !== 'design') {
-            $this->memory->remember($run->project, $run->droid, Memory::facts($data['remember'] ?? null));
+        $remembered = [];
+        if (($memory = $this->memoryProject($run)) && $run->kind !== 'design') {
+            $remembered = $this->memory->remember($memory, $run->droid, Memory::facts($data['remember'] ?? null));
         }
         $next = in_array($run->kind, ['chat', 'plan', 'propose'], true) ? array_map(fn (string $n) => Str::limit($n, 120, ''), $this->strings($data['next'] ?? null, 3)) : [];
         $this->say($run, 'agent', array_filter([
             'text' => Str::limit($text, 6000),
             'reasoning' => is_string($data['reasoning'] ?? null) ? Str::limit($data['reasoning'], 1000) : null,
             'next' => $next ?: null,
+            // Shown under the reply, so the person sees what the next droid will know.
+            'remembered' => $remembered ?: null,
         ]));
 
         $slug = $run->project?->slug;
@@ -577,6 +583,16 @@ class Conversation
             ['Failed runs', (string) $runs->where('status', 'failed')->count()],
             ['Cost per task', $tasks ? '$'.number_format($runs->sum('cost') / $tasks, 2) : '$0.00'],
         ];
+    }
+
+    /** The project whose shared memory a run reads and adds to: a droid's own chat uses the project it is on. */
+    private function memoryProject(Run $run): ?Project
+    {
+        if ($run->project) {
+            return $run->project;
+        }
+
+        return in_array($run->kind, ['chat', 'reflect'], true) ? $run->droid->project : null;
     }
 
     /** @return list<string> */

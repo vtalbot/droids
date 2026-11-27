@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+    BrainIcon,
     CheckIcon,
     ListChecksIcon,
     MessagesSquareIcon,
@@ -536,6 +537,21 @@ function ChatRow({
                         </Reasoning>
                     )}
                     <MessageResponse>{m.text}</MessageResponse>
+                    {m.remembered && m.remembered.length > 0 && (
+                        <details className="mt-1 text-xs text-muted-foreground">
+                            <summary className="flex cursor-pointer items-center gap-1.5">
+                                <BrainIcon className="size-3.5" />
+                                Saved {m.remembered.length} note
+                                {m.remembered.length === 1 ? '' : 's'} to
+                                project memory
+                            </summary>
+                            <ul className="mt-1.5 ml-5 list-disc space-y-0.5">
+                                {m.remembered.map((r) => (
+                                    <li key={r}>{r}</li>
+                                ))}
+                            </ul>
+                        </details>
+                    )}
                 </MessageContent>
             </Message>
         );

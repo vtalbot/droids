@@ -53,6 +53,8 @@ type ChatItemBody =
           reasoning?: string;
           /** Follow-ups the droid expects, shown as buttons above the prompt. */
           next?: string[];
+          /** What the droid added to the project's shared memory with this reply. */
+          remembered?: string[];
       }
     | {
           kind: 'tool';
