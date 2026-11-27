@@ -54,6 +54,22 @@ class LaravelCloud
         return ['data' => $json['data'] ?? [], 'included' => $json['included'] ?? []];
     }
 
+    /**
+     * Create an application from a GitHub repository. Cloud makes its default
+     * environment; the first deploy is up to the person.
+     *
+     * @return array<string, mixed> the new application resource
+     */
+    public function createApplication(string $repository, string $name, string $region): array
+    {
+        return $this->http()->post('/applications', [
+            'repository' => $repository,
+            'name' => $name,
+            'region' => $region,
+            'source_control_provider_type' => 'github',
+        ])->json('data') ?? [];
+    }
+
     /** @return array{data: list<array<string, mixed>>, included: list<array<string, mixed>>} */
     public function environments(string $application): array
     {

@@ -125,7 +125,8 @@ class RunQueue
             Run::where('topic', $topic)->whereIn('status', Run::ACTIVE)
                 ->update(['status' => 'cancelled', 'error' => 'Replaced by a newer question', 'finished_at' => now()]);
 
-            $fresh = ! ChatMessage::where('droid_id', $droid->id)->where('topic', $stored)->exists();
+            $shared = str_starts_with((string) $stored, 'discuss:');
+            $fresh = ! ChatMessage::where('topic', $stored)->when(! $shared, fn ($q) => $q->where('droid_id', $droid->id))->exists();
             if ($fresh && $intro !== null && $intro !== '') {
                 ChatMessage::create(['droid_id' => $droid->id, 'topic' => $stored, 'kind' => 'agent', 'payload' => ['text' => $intro]]);
             }

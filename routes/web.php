@@ -28,6 +28,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('cloud/applications', [Factory\CloudController::class, 'applications'])->name('cloud.applications');
         Route::post('projects/{project:slug}/cloud', [Factory\CloudController::class, 'link'])->name('cloud.link');
+        Route::post('projects/{project:slug}/cloud/applications', [Factory\CloudController::class, 'create'])->name('cloud.create');
         Route::delete('projects/{project:slug}/cloud', [Factory\CloudController::class, 'unlink'])->name('cloud.unlink');
         Route::post('projects/{project:slug}/cloud/refresh', [Factory\CloudController::class, 'refresh'])->name('cloud.refresh');
         Route::post('projects/{project:slug}/cloud/deploy', [Factory\CloudController::class, 'deploy'])->name('cloud.deploy');

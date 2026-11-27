@@ -12,6 +12,7 @@ import {
     LinkIcon,
     LoaderCircleIcon,
     MoonIcon,
+    PlusIcon,
     RocketIcon,
     RotateCwIcon,
     ServerIcon,
@@ -58,9 +59,12 @@ import {
     Dialog,
     DialogContent,
     DialogDescription,
+    DialogFooter,
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { BUILD_LOG } from '@/factory/demo';
 import { applyServerStore, request, useSave } from '@/factory/api';
 import {
@@ -310,11 +314,24 @@ export function CloudPanel({
                     Link a Laravel Cloud application to see its environments,
                     deployments, health and logs here, and deploy from Droids.
                 </p>
-                <LinkCloudDialog
-                    store={store}
-                    pid={pid}
-                    repo={store.projects.find((p) => p.id === pid)?.repo}
-                />
+                <div className="flex flex-wrap justify-center gap-2">
+                    {store.cloudConnected && (
+                        <CreateCloudDialog
+                            pid={pid}
+                            name={
+                                store.projects.find((p) => p.id === pid)?.name
+                            }
+                            repo={
+                                store.projects.find((p) => p.id === pid)?.repo
+                            }
+                        />
+                    )}
+                    <LinkCloudDialog
+                        store={store}
+                        pid={pid}
+                        repo={store.projects.find((p) => p.id === pid)?.repo}
+                    />
+                </div>
             </div>
         );
 
@@ -1107,6 +1124,133 @@ function DeploymentLogs({
                 </div>
             </DialogContent>
         </Dialog>
+    );
+}
+
+/** Regions Laravel Cloud hosts applications in. */
+const REGIONS: [string, string][] = [
+    ['us-east-1', 'US East (N. Virginia)'],
+    ['us-east-2', 'US East (Ohio)'],
+    ['ca-central-1', 'Canada (Montreal)'],
+    ['eu-central-1', 'EU (Frankfurt)'],
+    ['eu-west-1', 'EU (Ireland)'],
+    ['eu-west-2', 'EU (London)'],
+    ['eu-west-3', 'EU (Paris)'],
+    ['me-central-1', 'Middle East (UAE)'],
+    ['ap-southeast-1', 'Asia Pacific (Singapore)'],
+    ['ap-southeast-2', 'Asia Pacific (Sydney)'],
+    ['ap-northeast-1', 'Asia Pacific (Tokyo)'],
+];
+
+/** Create a Laravel Cloud application from the project's repository, then link it. */
+function CreateCloudDialog({
+    pid,
+    name,
+    repo,
+}: {
+    pid: string;
+    name?: string;
+    repo?: string;
+}) {
+    const save = useSave();
+    const [open, setOpen] = useState(false);
+    const [app, setApp] = useState('');
+    const [region, setRegion] = useState('ca-central-1');
+    const [busy, setBusy] = useState(false);
+    const submit = async () => {
+        if (busy || app.trim().length < 2) return;
+        setBusy(true);
+        const res = await save(
+            'POST',
+            `/factory/projects/${encodeURIComponent(pid)}/cloud/applications`,
+            { name: app.trim(), region },
+        );
+        setBusy(false);
+        if (!res) return;
+        setOpen(false);
+        toast.success(`Created ${app.trim()} on Laravel Cloud`, {
+            description: 'Deploy it from this tab when you are ready.',
+        });
+    };
+    return (
+        <>
+            <Button
+                onClick={() => {
+                    setApp((name ?? '').slice(0, 40));
+                    setOpen(true);
+                }}
+            >
+                <PlusIcon />
+                Create a Laravel Cloud app
+            </Button>
+            <Dialog open={open} onOpenChange={setOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Create a Laravel Cloud app</DialogTitle>
+                        <DialogDescription>
+                            Laravel Cloud builds it from{' '}
+                            <span className="font-mono">{repo}</span> with a
+                            production environment. Its GitHub account needs
+                            access to the repository.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form
+                        className="grid gap-4"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            void submit();
+                        }}
+                    >
+                        <div className="grid gap-2">
+                            <Label htmlFor="cloud-app-name">Name</Label>
+                            <Input
+                                id="cloud-app-name"
+                                value={app}
+                                maxLength={40}
+                                autoFocus
+                                onChange={(e) => setApp(e.target.value)}
+                            />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="cloud-app-region">Region</Label>
+                            <Select value={region} onValueChange={setRegion}>
+                                <SelectTrigger id="cloud-app-region">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {REGIONS.map(([id, label]) => (
+                                        <SelectItem key={id} value={id}>
+                                            {label}
+                                            <span className="font-mono text-xs text-muted-foreground">
+                                                {id}
+                                            </span>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <DialogFooter>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setOpen(false)}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                type="submit"
+                                disabled={busy || app.trim().length < 2}
+                            >
+                                {busy && (
+                                    <LoaderCircleIcon className="animate-spin" />
+                                )}
+                                Create app
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+        </>
     );
 }
 

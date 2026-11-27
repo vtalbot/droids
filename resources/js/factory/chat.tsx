@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
     CheckIcon,
     ListChecksIcon,
+    MessagesSquareIcon,
     NotebookPenIcon,
     PaletteIcon,
     SparklesIcon,
@@ -95,6 +96,8 @@ export type ChatTarget = {
     plan?: string;
     /** A design session for this project's design system and screens. */
     design?: string;
+    /** A discussion about this project, with any droid. */
+    discuss?: string;
     propose?: boolean;
     reflect?: boolean;
 } | null;
@@ -108,21 +111,27 @@ export function ChatSheet({
     onClose,
     bump,
     proj,
+    onSwitchDroid,
 }: {
     store: Store;
     target: ChatTarget;
     onClose: () => void;
     bump: () => void;
     proj: (id: string) => Store['projects'][number];
+    /** Hand a project discussion to another droid. */
+    onSwitchDroid?: (id: string) => void;
 }) {
     const d = store.droids.find((x) => x.id === target?.droid);
     const planFor = target?.plan;
     const designFor = target?.design;
+    const discussFor = target?.discuss;
     const key = planFor
         ? `plan:${planFor}`
         : designFor
           ? `design:${designFor}`
-          : (d?.id ?? '');
+          : discussFor
+            ? `discuss:${discussFor}`
+            : (d?.id ?? '');
     const [sending, setSending] = useState(false);
     const [text, setText] = useState('');
     const [model, setModel] = useState(d?.model ?? '');
@@ -152,48 +161,60 @@ export function ChatSheet({
         const designed = designFor
             ? (store.design?.[designFor]?.length ?? 0) > 0
             : false;
-        store.chats[key] = designFor
+        store.chats[key] = discussFor
             ? [
                   {
                       kind: 'agent',
-                      text: designed
-                          ? `I'm the designer for **${proj(designFor).name}**. Its design is in the Design tab. Tell me what to change, or which screen to design next.`
-                          : `I'm the designer for **${proj(designFor).name}**. I'll read \`${proj(designFor).repo}\` and write a design system and screen mockups that every droid on the project will follow. What should it feel like, and which screens matter most?`,
+                      text: `Let's talk about **${proj(discussFor).name}**. I can read \`${proj(discussFor).repo}\` and its board. Ask me how it's going, about the code, or what to do next.`,
                   },
               ]
-            : planFor
+            : designFor
               ? [
                     {
                         kind: 'agent',
-                        text: `Let's plan **${proj(planFor).name}**. The current milestone is *${proj(planFor).milestone}* (${proj(planFor).done} of ${proj(planFor).total} closed, due ${proj(planFor).due}). Tell me what you want to ship and I'll draft issues for the **${proj(planFor).board}** board, with the engine I'd give each one.`,
+                        text: designed
+                            ? `I'm the designer for **${proj(designFor).name}**. Its design is in the Design tab. Tell me what to change, or which screen to design next.`
+                            : `I'm the designer for **${proj(designFor).name}**. I'll read \`${proj(designFor).repo}\` and write a design system and screen mockups that every droid on the project will follow. What should it feel like, and which screens matter most?`,
                     },
                 ]
-              : [
-                    {
-                        kind: 'agent',
-                        text:
-                            d.status === 'idle'
-                                ? d.project
-                                    ? `${d.unit} online and docked. Give me an issue from **${proj(d.project).board}**, or ask me anything about \`${proj(d.project).repo}\`.`
-                                    : `${d.unit} online and docked. Give me an issue from any board, or ask me anything.`
-                                : `Working on **#${d.task}**. Current step: ${d.step}.`,
-                    },
-                ];
+              : planFor
+                ? [
+                      {
+                          kind: 'agent',
+                          text: `Let's plan **${proj(planFor).name}**. The current milestone is *${proj(planFor).milestone}* (${proj(planFor).done} of ${proj(planFor).total} closed, due ${proj(planFor).due}). Tell me what you want to ship and I'll draft issues for the **${proj(planFor).board}** board, with the engine I'd give each one.`,
+                      },
+                  ]
+                : [
+                      {
+                          kind: 'agent',
+                          text:
+                              d.status === 'idle'
+                                  ? d.project
+                                      ? `${d.unit} online and docked. Give me an issue from **${proj(d.project).board}**, or ask me anything about \`${proj(d.project).repo}\`.`
+                                      : `${d.unit} online and docked. Give me an issue from any board, or ask me anything.`
+                                  : `Working on **#${d.task}**. Current step: ${d.step}.`,
+                      },
+                  ];
     }
     const items: ChatItem[] = d ? store.chats[key] : [];
     const sugg =
         d && items.length === 1 && !thinking
-            ? planFor
-                ? [`Plan the rest of ${proj(planFor).milestone}`, PROPOSE]
-                : designFor
-                  ? [
-                        `Create a design system for ${proj(designFor).name}`,
-                        'Design the main screens',
-                    ]
-                  : []
+            ? discussFor
+                ? [
+                      `Where does ${proj(discussFor).name} stand?`,
+                      'What are the biggest risks in the code right now?',
+                  ]
+                : planFor
+                  ? [`Plan the rest of ${proj(planFor).milestone}`, PROPOSE]
+                  : designFor
+                    ? [
+                          `Create a design system for ${proj(designFor).name}`,
+                          'Design the main screens',
+                      ]
+                    : []
             : [];
     const issue =
-        d && !planFor && !designFor
+        d && !planFor && !designFor && !discussFor
             ? store.issues.find(
                   (i) => i.n === d.task && i.project === d.project,
               )
@@ -211,7 +232,7 @@ export function ChatSheet({
         const t = msg.trim();
         const kind = designFor
             ? 'design'
-            : t === REFLECT && !planFor
+            : t === REFLECT && !planFor && !discussFor
               ? 'reflect'
               : planFor
                 ? t === PROPOSE
@@ -236,7 +257,12 @@ export function ChatSheet({
         const res = await save(
             'POST',
             `/factory/droids/${encodeURIComponent(d.id)}/ask`,
-            { kind, project: planFor ?? designFor, text: t, intro },
+            {
+                kind,
+                project: planFor ?? designFor ?? discussFor,
+                text: t,
+                intro,
+            },
         );
         if (!res) {
             items.pop();
@@ -284,7 +310,7 @@ export function ChatSheet({
                                     </Badge>
                                 </SheetDescription>
                             </div>
-                            {!planFor && !designFor && (
+                            {!planFor && !designFor && !discussFor && (
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <Button
@@ -305,7 +331,41 @@ export function ChatSheet({
                             )}
                         </SheetHeader>
                         <div className="flex items-center gap-2 border-b px-4 py-2.5 text-sm text-muted-foreground">
-                            {designFor ? (
+                            {discussFor ? (
+                                <>
+                                    <MessagesSquareIcon className="size-4" />
+                                    <span className="mr-auto">
+                                        Discussing{' '}
+                                        <span className="text-foreground">
+                                            {proj(discussFor).name}
+                                        </span>
+                                    </span>
+                                    {onSwitchDroid &&
+                                        store.droids.length > 1 && (
+                                            <select
+                                                aria-label="Droid answering"
+                                                className="rounded-md border bg-background px-2 py-1 text-xs text-foreground"
+                                                value={d.id}
+                                                disabled={thinking}
+                                                onChange={(e) =>
+                                                    onSwitchDroid(
+                                                        e.target.value,
+                                                    )
+                                                }
+                                            >
+                                                {store.droids.map((x) => (
+                                                    <option
+                                                        key={x.id}
+                                                        value={x.id}
+                                                    >
+                                                        {x.unit} {x.name} ·{' '}
+                                                        {x.role}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        )}
+                                </>
+                            ) : designFor ? (
                                 <>
                                     <PaletteIcon className="size-4" />
                                     <span>

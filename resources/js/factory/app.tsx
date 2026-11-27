@@ -245,6 +245,24 @@ export default function FactoryApp({
         setTaskKey(null);
         setChat({ droid: ds.id, design: pid });
     };
+    const discuss = (pid: string) => {
+        const dr =
+            store.droids.find(
+                (d) => d.project === pid && d.role === 'Planner',
+            ) ??
+            store.droids.find((d) => d.project === pid) ??
+            store.droids.find((d) => d.role === 'Planner') ??
+            store.droids[0];
+        if (!dr) {
+            toast.info(
+                'Assemble a droid first: it answers questions about the project.',
+            );
+            assemble();
+            return;
+        }
+        setTaskKey(null);
+        setChat({ droid: dr.id, discuss: pid });
+    };
     const [connectOpen, setConnectOpen] = useState(false);
     const [syncing, setSyncing] = useState(false);
 
@@ -748,6 +766,7 @@ export default function FactoryApp({
                                 planWith={planWith}
                                 propose={propose}
                                 designWith={designWith}
+                                discuss={discuss}
                             />
                         )}
                         {view === 'board' && <Board {...ctx} />}
@@ -778,6 +797,9 @@ export default function FactoryApp({
                     onClose={() => setChat(null)}
                     bump={bump}
                     proj={proj}
+                    onSwitchDroid={(id) =>
+                        setChat((c) => (c ? { ...c, droid: id } : c))
+                    }
                 />
                 <TaskSheet
                     store={store}

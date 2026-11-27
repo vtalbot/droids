@@ -17,6 +17,7 @@ import {
     CloudIcon,
     FlagIcon,
     LightbulbIcon,
+    MessagesSquareIcon,
     NotebookPenIcon,
     PaletteIcon,
     PencilIcon,
@@ -87,6 +88,7 @@ type Props = {
     planWith: (pid: string) => void;
     propose: (pid: string) => void;
     designWith: (pid: string) => void;
+    discuss: (pid: string) => void;
 };
 
 const engineCfg = {
@@ -219,6 +221,10 @@ export function ProjectView(props: Props) {
                         </h1>
                     </div>
                     <div className="flex flex-wrap gap-2">
+                        <Button onClick={() => props.discuss(p.id)}>
+                            <MessagesSquareIcon />
+                            Discuss
+                        </Button>
                         <RenameProject p={p} />
                         <Button
                             variant="outline"
