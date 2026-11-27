@@ -128,8 +128,8 @@ class Models
         $out = [];
         foreach (is_array($data) ? $data : [] as $m) {
             $id = is_array($m) ? ($m['id'] ?? null) : null;
-            // Only the models built for coding agents.
-            if (is_string($id) && str_contains($id, 'codex')) {
+            // Only the models Codex runs: codex builds and named GPT models like gpt-6.2-sol.
+            if (is_string($id) && (str_contains($id, 'codex') || preg_match('/^gpt-\d+(\.\d+)?-[a-z]+$/', $id) === 1)) {
                 $out[] = ['id' => $id, 'label' => self::codexLabel($id)];
             }
         }

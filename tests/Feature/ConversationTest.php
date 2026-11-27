@@ -245,7 +245,7 @@ class ConversationTest extends TestCase
         $this->assertSame(['candidates', 'user', 'agent', 'candidates'], array_column($chat, 'kind'));
         $this->assertSame([
             ['name' => 'Warden', 'role' => 'Reviewer', 'provider' => 'claude', 'model' => 'Opus 5.5', 'pitch' => 'I review.', 'why' => 'You asked.', 'instructions' => 'Check auth.'],
-            ['name' => 'Rivet', 'role' => 'Builder', 'provider' => 'codex', 'model' => 'GPT-5.1-Codex', 'pitch' => 'I build.', 'why' => '', 'instructions' => ''],
+            ['name' => 'Rivet', 'role' => 'Builder', 'provider' => 'codex', 'model' => 'GPT-6.2-Sol', 'pitch' => 'I build.', 'why' => '', 'instructions' => ''],
         ], $chat[3]['items']);
     }
 

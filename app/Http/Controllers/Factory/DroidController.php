@@ -20,14 +20,14 @@ class DroidController extends Controller
      * the small models, which keeps the big ones free for building and review.
      */
     public const ROLE_GUIDE = [
-        'Builder' => ['builds Ready cards and opens a pull request for each', 'Sonnet 5.5, Opus 5.5 or GPT-5.1-Codex'],
+        'Builder' => ['builds Ready cards and opens a pull request for each', 'Sonnet 5.5, Opus 5.5 or the newest GPT model on Codex'],
         'Reviewer' => ['reviews pull requests and sends changes back to the builder', 'Opus 5.5, ideally on the other engine than the builder'],
         'Planner' => ['plans tasks and milestones with the person in the project discussion', 'Opus 5.5 or Sonnet 5.5'],
         'Designer' => ['keeps the design files of the project up to date', 'Opus 5.5'],
-        'Tester' => ['takes Ready cards labelled test and writes the missing tests', 'Sonnet 5.5 or GPT-5.1-Codex-Mini'],
-        'Docs' => ['takes Ready cards labelled docs and writes the documentation', 'Haiku 5.5 or GPT-5.1-Codex-Mini'],
+        'Tester' => ['takes Ready cards labelled test and writes the missing tests', 'Sonnet 5.5 or a lighter GPT model on Codex'],
+        'Docs' => ['takes Ready cards labelled docs and writes the documentation', 'Haiku 5.5 or the lightest GPT model on Codex'],
         'Triager' => ['triages the Ideas column: acceptance criteria, priority and questions', 'Haiku 5.5'],
-        'Fixer' => ['takes small Ready cards labelled bug or chore', 'GPT-5.1-Codex-Mini or Haiku 5.5'],
+        'Fixer' => ['takes small Ready cards labelled bug or chore', 'Haiku 5.5 or the lightest GPT model on Codex'],
         'Copywriter' => ['suggests names, sender addresses and wording to prefill forms', 'Haiku 5.5'],
         'HR' => ['proposes new droids to hire', 'Sonnet 5.5'],
     ];
@@ -45,7 +45,7 @@ class DroidController extends Controller
     /** The models offered per engine, as the UI labels them. */
     public const MODELS = [
         'claude' => ['Opus 5.5', 'Sonnet 5.5', 'Haiku 5.5'],
-        'codex' => ['GPT-5.1-Codex', 'GPT-5.1-Codex-Mini'],
+        'codex' => ['GPT-6.2-Sol', 'GPT-6.2-Astra', 'GPT-6.1-Terra', 'GPT-6.1-Sol', 'GPT-6-Astra', 'GPT-6-Sol', 'GPT-6-Luna'],
     ];
 
     public function store(Request $request): JsonResponse
@@ -92,7 +92,7 @@ class DroidController extends Controller
     {
         $data = $request->validate([
             'name' => ['sometimes', 'string', 'max:40'],
-            'model' => ['sometimes', 'string', Rule::in(EngineModel::labels()[$droid->provider] ?? [])],
+            'model' => ['sometimes', 'string', Rule::in([...EngineModel::labels()[$droid->provider] ?? [], $droid->model])],
             'role' => ['sometimes', Rule::in(self::ROLES)],
             'autonomy' => ['sometimes', Rule::in(['ask', 'pr', 'merge'])],
             'instructions' => ['sometimes', 'nullable', 'string', 'max:5000'],

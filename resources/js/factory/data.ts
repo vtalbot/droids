@@ -165,7 +165,15 @@ export const PROVIDERS: Record<
     codex: {
         label: 'Codex',
         short: 'Codex',
-        models: ['GPT-5.1-Codex', 'GPT-5.1-Codex-Mini'],
+        models: [
+            'GPT-6.2-Sol',
+            'GPT-6.2-Astra',
+            'GPT-6.1-Terra',
+            'GPT-6.1-Sol',
+            'GPT-6-Astra',
+            'GPT-6-Sol',
+            'GPT-6-Luna',
+        ],
     },
 };
 
@@ -185,7 +193,7 @@ export const ROLES: {
     {
         role: 'Builder',
         does: 'Builds Ready cards and opens a pull request for each',
-        model: 'Sonnet 5.5, Opus 5.5 or GPT-5.1-Codex',
+        model: 'Sonnet 5.5, Opus 5.5 or the newest GPT model on Codex',
     },
     {
         role: 'Reviewer',
@@ -205,12 +213,12 @@ export const ROLES: {
     {
         role: 'Tester',
         does: 'Takes Ready cards labelled test and writes the missing tests',
-        model: 'Sonnet 5.5 or GPT-5.1-Codex-Mini',
+        model: 'Sonnet 5.5 or a lighter GPT model on Codex',
     },
     {
         role: 'Docs',
         does: 'Takes Ready cards labelled docs and writes the documentation',
-        model: 'Haiku 5.5 or GPT-5.1-Codex-Mini',
+        model: 'Haiku 5.5 or the lightest GPT model on Codex',
         light: true,
     },
     {
@@ -222,7 +230,7 @@ export const ROLES: {
     {
         role: 'Fixer',
         does: 'Takes small Ready cards labelled bug or chore',
-        model: 'GPT-5.1-Codex-Mini or Haiku 5.5',
+        model: 'Haiku 5.5 or the lightest GPT model on Codex',
         light: true,
     },
     {

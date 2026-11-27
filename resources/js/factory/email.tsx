@@ -74,6 +74,7 @@ function usePanel<T>(url: string) {
         try {
             const res = (await request(method, path, body)) as unknown as T & {
                 result?: unknown;
+                warnings?: string[];
             };
             setPanel(res);
             return res;
@@ -243,12 +244,7 @@ export function EmailPanel({ pid }: { pid: string }) {
         setEnv((v) => v || e?.id || '');
         const saved = e?.email?.from ?? '';
         setLocal(
-            (v) =>
-                v ||
-                (panel.domain &&
-                saved.toLowerCase().endsWith(`@${panel.domain.toLowerCase()}`)
-                    ? saved.slice(0, saved.lastIndexOf('@'))
-                    : 'hello'),
+            (v) => v || (saved.includes('@') ? emailLocal(saved) : 'hello'),
         );
         setName((v) => v || e?.email?.name || '');
         setReceiving(panel.resend?.receiving ?? false);
@@ -274,7 +270,9 @@ export function EmailPanel({ pid }: { pid: string }) {
             </div>
         );
 
-    const from = local ? `${local}@${panel.domain}` : '';
+    // Cloud sends only from its own sending domain, which can be a parent or child of the project's.
+    const sendDomain = panel.sending?.name ?? panel.domain;
+    const from = local ? `${local}@${sendDomain}` : '';
     const missing = [
         ...(panel.sending?.records ?? []),
         ...(panel.resend?.records ?? []),
@@ -343,12 +341,22 @@ export function EmailPanel({ pid }: { pid: string }) {
                                 >
                                     <InputGroupText
                                         className="truncate"
-                                        title={`@${panel.domain}`}
+                                        title={`@${sendDomain}`}
                                     >
-                                        @{panel.domain}
+                                        @{sendDomain}
                                     </InputGroupText>
                                 </InputGroupAddon>
                             </InputGroup>
+                            {panel.cloud &&
+                                !['verified', 'active'].includes(
+                                    panel.sending?.status ?? '',
+                                ) && (
+                                    <p className="text-xs text-needs">
+                                        {panel.sending
+                                            ? `Laravel Cloud sends from ${sendDomain} once it is verified (now ${panel.sending.status}).`
+                                            : `Add ${panel.domain} in Laravel Cloud under Email first: Cloud only sends from a verified domain.`}
+                                    </p>
+                                )}
                         </div>
                         <div className="grid gap-1.5">
                             <Label htmlFor="email-name">From name</Label>
@@ -398,7 +406,11 @@ export function EmailPanel({ pid }: { pid: string }) {
                                         receiving,
                                     },
                                 );
-                                if (res) dnsToast(res.result);
+                                if (!res) return;
+                                res.warnings?.forEach((w) =>
+                                    toast.warning(w, { duration: 15000 }),
+                                );
+                                dnsToast(res.result);
                             }}
                         >
                             {busy === 'setup' && (

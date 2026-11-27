@@ -526,7 +526,7 @@ const STARTERS: Candidate[] = [
         name: 'Bolt',
         role: 'Builder',
         provider: 'codex',
-        model: 'GPT-5.1-Codex',
+        model: 'GPT-6.2-Sol',
         pitch: "I'm Bolt. Hand me a clear issue and I'll come back with a small, tested pull request.",
         why: 'Every project needs someone turning ready issues into code.',
         instructions:

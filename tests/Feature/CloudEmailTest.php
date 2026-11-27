@@ -150,6 +150,27 @@ class CloudEmailTest extends TestCase
         Http::assertSent(fn (Request $r) => $r->url() === self::CF.'/zones/z1/dns_records' && $r->method() === 'POST' && $r['name'] === 'resend._domainkey.droids.dev');
 
         $this->postJson('/factory/projects/droids/email/setup', ['environment' => 'env-prod', 'from_address' => 'hi@other.dev', 'from_name' => 'Droids'])->assertJsonValidationErrors('from_address');
+        Http::assertNotSent(fn (Request $r) => str_ends_with($r->url(), '/environments/env-prod/resend'));
+        $this->assertStringContainsString("Laravel Cloud hasn't verified droids.dev yet (it is pending)", $res->json('warnings.0'));
+    }
+
+    public function test_cloud_sends_from_its_verified_sending_domain(): void
+    {
+        $this->project->update(['domain' => 'notifications.droids.dev']);
+        Http::fake([
+            self::CLOUD.'/environments/env-prod/resend' => Http::response(['data' => []]),
+            self::CLOUD.'/applications/app-1/environments*' => Http::response(['data' => [], 'included' => []]),
+            self::CLOUD.'/applications/*' => Http::response(['data' => ['id' => 'app-1', 'attributes' => []], 'included' => []]),
+            self::CLOUD.'/resend/domains' => Http::response(['data' => [['id' => 'sd-1', 'attributes' => ['name' => 'droids.dev', 'status' => 'verified', 'records' => []]]]]),
+            ...$this->zone(),
+        ]);
+
+        $res = $this->postJson('/factory/projects/droids/email/setup', ['environment' => 'env-prod', 'from_address' => 'hi@notifications.droids.dev', 'from_name' => 'Droids'])->assertOk();
+        $this->assertStringContainsString("Laravel Cloud's verified sending domain is droids.dev", $res->json('warnings.0'));
+        Http::assertNotSent(fn (Request $r) => str_ends_with($r->url(), '/environments/env-prod/resend'));
+
+        $this->postJson('/factory/projects/droids/email/setup', ['environment' => 'env-prod', 'from_address' => 'hi@droids.dev', 'from_name' => 'Droids'])->assertOk()->assertJsonPath('warnings', []);
+        Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/environments/env-prod/resend') && $r['from_address'] === 'hi@droids.dev');
     }
 
     public function test_a_resend_key_is_checked_before_it_is_saved(): void
