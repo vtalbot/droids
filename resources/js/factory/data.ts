@@ -147,7 +147,8 @@ export type Ask = {
         | 'design'
         | 'recruit'
         | 'triage'
-        | 'suggest';
+        | 'suggest'
+        | 'unblock';
     status: 'queued' | 'running';
     /** Why no worker can take it yet, when queued. */
     why?: string;
@@ -238,6 +239,11 @@ export const ROLES: {
         does: 'Suggests names, sender addresses and wording to prefill forms',
         model: 'Haiku 5.5',
         light: true,
+    },
+    {
+        role: 'Mechanic',
+        does: 'Gets blocked droids going again: retries, switches a missing model, or asks you',
+        model: 'Sonnet 5.5 or Haiku 5.5',
     },
     { role: 'HR', does: 'Proposes new droids to hire', model: 'Sonnet 5.5' },
 ];

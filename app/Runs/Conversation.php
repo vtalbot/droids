@@ -5,6 +5,7 @@ namespace App\Runs;
 use App\GitHub\RepositoryWriter;
 use App\Http\Controllers\Factory\CloudVariableController;
 use App\Http\Controllers\Factory\DroidController;
+use App\Models\Activity;
 use App\Models\ChatMessage;
 use App\Models\Droid;
 use App\Models\EngineModel;
@@ -75,9 +76,12 @@ class Conversation
     /** The topic as stored on chat messages: null for a droid's own chat. */
     public static function storedTopic(string $topic): ?string
     {
-        // Triage talks to the person in the project discussion.
+        // Triage and the Mechanic talk to the person in the project discussion.
         if (str_starts_with($topic, 'triage:')) {
             return 'discuss:'.substr($topic, 7);
+        }
+        if (preg_match('/^unblock:([^:]+):\d+$/', $topic, $m) === 1) {
+            return "discuss:{$m[1]}";
         }
 
         return preg_match('/^(plan|design|discuss|suggest):|^recruit$/', $topic) === 1 ? $topic : null;
@@ -109,6 +113,7 @@ class Conversation
             'recruit' => $this->recruitContext($run),
             'triage' => $this->triageContext($project),
             'suggest' => $this->suggestContext($run),
+            'unblock' => $this->unblockContext($run),
             default => $project ? $this->discussContext($project) : $this->chatContext($droid),
         }];
         if (! $design) {
@@ -334,6 +339,7 @@ class Conversation
                 : '{"message": "...", "reasoning": "..."}',
             'propose' => '{"message": "...", "reasoning": "...", "proposals": [{"kind": "feature" or "milestone", "title": "...", "why": "...", "effort": "...", "engine": "claude" or "codex"}], "next": ["..."]}',
             'reflect' => '{"message": "...", "reasoning": "...", "good": ["..."], "improve": ["..."], "rules": ["..."]}',
+            'unblock' => '{"message": "...", "reasoning": "...", "action": "retry" or "model" or "ask", "model": "..." or null}',
             'triage' => '{"message": "...", "reasoning": "...", "ready": [{"number": 12, "priority": "high", "criteria": "- ...\\n- ..."}], "questions": [{"number": 13, "priority": "medium", "question": "..."}]}',
             'recruit' => '{"message": "...", "reasoning": "...", "candidates": [{"name": "...", "role": "...", "provider": "claude" or "codex", "model": "...", "pitch": "...", "why": "...", "instructions": "..."}]}',
             default => '{"message": "...", "reasoning": "..."}',
@@ -354,7 +360,7 @@ class Conversation
             ->latest('id')->limit(self::HISTORY + 1)->get()->reverse()->values();
 
         // The newest user message is the request itself; a triage run starts on its own.
-        if ($run->kind !== 'triage' && $messages->last()?->kind === 'user') {
+        if (! in_array($run->kind, ['triage', 'unblock'], true) && $messages->last()?->kind === 'user') {
             $messages->pop();
         }
 
@@ -377,6 +383,11 @@ class Conversation
         $data = $this->decode((string) $run->summary);
         if ($run->kind === 'suggest') {
             $this->suggested($run, is_array($data) ? $data : []);
+
+            return;
+        }
+        if ($run->kind === 'unblock') {
+            $this->unblocked($run, is_array($data) ? $data : []);
 
             return;
         }
@@ -742,6 +753,79 @@ class Conversation
     private function priorityFor(Task $task, array $item): ?int
     {
         return Task::priorityValue($item['priority'] ?? null) ?? $task->priority;
+    }
+
+    /** The failed task run a Mechanic's run looks at, from its topic "unblock:{project}:{run}". */
+    private static function unblockTarget(Run $run): ?Run
+    {
+        $id = (int) Str::afterLast((string) $run->topic, ':');
+
+        return Run::with(['droid', 'task.project'])->find($id);
+    }
+
+    /** @return list<string> */
+    private function unblockContext(Run $run): array
+    {
+        $failed = self::unblockTarget($run);
+        if (! $failed || ! $failed->task) {
+            return ['You are the Mechanic, but the blocked run is gone. Say so in "message" and use "ask".'];
+        }
+        $d = $failed->droid;
+        $models = EngineModel::labels()[$d->provider] ?? [];
+        $log = Str::of((string) $failed->log)->trim()->substr(-4000)->toString();
+
+        return [
+            "You are the Mechanic of {$failed->task->project->name}: you get droids that are blocked going again.",
+            "{$d->unit} {$d->name}, a {$d->role} on {$d->provider} {$d->model}, is blocked on #{$failed->task->number} {$failed->task->title} (a {$failed->kind} run).",
+            '',
+            'The error:',
+            Str::limit((string) $failed->error, 2000),
+            '',
+            'The end of its log:',
+            $log !== '' ? $log : '(empty)',
+            '',
+            'Models '.$d->provider.' droids can use: '.implode(', ', $models).'.',
+            '',
+            'Decide what gets it going again:',
+            '- "retry": the failure looks temporary (network, timeout, a worker that stopped, a flaky service). The run starts again.',
+            '- "model": its model is not supported or not available. Put the best replacement from the list above in "model"; the droid switches to it and starts again.',
+            '- "ask": only the person can fix it (a missing secret or permission, an unclear task, the same code failure again). Say exactly what they need to do in "message".',
+            'In "message", tell the person in two or three sentences what went wrong and what you did, naming the droid and the issue.',
+        ];
+    }
+
+    /**
+     * Apply the Mechanic's decision: run again, switch the model and run again, or leave it to the person.
+     *
+     * @param  array<mixed>  $data
+     */
+    private function unblocked(Run $run, array $data): void
+    {
+        $failed = self::unblockTarget($run);
+        $action = is_string($data['action'] ?? null) ? $data['action'] : 'ask';
+        $text = is_string($data['message'] ?? null) ? Str::limit($data['message'], 2000) : 'I looked at the blocked droid but could not tell what to do.';
+        $d = $failed?->droid;
+        // Only while the droid is still blocked on that same run.
+        $still = $failed && $d && RunQueue::lastFailure($d)?->is($failed);
+        if ($still && $action === 'model') {
+            $model = is_string($data['model'] ?? null) ? $data['model'] : null;
+            if ($model && in_array($model, EngineModel::labels()[$d->provider] ?? [], true) && $model !== $d->model) {
+                $d->update(['model' => $model]);
+                Activity::create(['droid_id' => $d->id, 'text' => "switched to {$model}, by {$run->droid->name}"]);
+            } else {
+                $action = 'ask';
+            }
+        }
+        if ($still && in_array($action, ['retry', 'model'], true)) {
+            $retried = app(RunQueue::class)->retry($failed);
+            if ($retried) {
+                Activity::create(['droid_id' => $run->droid_id, 'text' => "got {$d->unit} {$d->name} going again on #{$failed->task?->number}"]);
+            }
+        }
+        $this->say($run, 'agent', array_filter([
+            'text' => $text,
+            'reasoning' => is_string($data['reasoning'] ?? null) ? Str::limit($data['reasoning'], 1000) : null,
+        ]));
     }
 
     /** The form a suggest run fills, from its topic "suggest:{project}:{form}". */

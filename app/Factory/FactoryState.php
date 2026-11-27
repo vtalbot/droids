@@ -360,7 +360,11 @@ class FactoryState
     {
         $out = [];
         foreach (ChatMessage::orderBy('id')->get() as $m) {
-            $out[$m->topic ?? $droidSlugs[$m->droid_id]][] = ['id' => $m->id, 'kind' => $m->kind, ...$m->payload];
+            $key = $m->topic ?? ($m->droid_id ? ($droidSlugs[$m->droid_id] ?? null) : null);
+            if ($key === null) {
+                continue; // a deleted droid's own chat
+            }
+            $out[$key][] = ['id' => $m->id, 'kind' => $m->kind, ...$m->payload];
         }
 
         return $out;

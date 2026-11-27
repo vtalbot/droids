@@ -14,6 +14,7 @@ import {
     NotebookPenIcon,
     FolderKanbanIcon,
     RefreshCwIcon,
+    RotateCcwIcon,
 } from 'lucide-react';
 import { Head } from '@inertiajs/react';
 import { toast } from 'sonner';
@@ -1343,16 +1344,17 @@ function DroidCard({
                 {d.status === 'idle' && (
                     <IssuePicker d={d} store={store} assign={assign} />
                 )}
-                {(d.status === 'needs' || d.status === 'blocked') && (
+                {d.status === 'needs' && (
                     <Button
                         size="sm"
                         variant="outline"
                         className="h-8 border-needs/40 text-needs hover:text-needs"
                         onClick={() => openChat(d.id)}
                     >
-                        {d.status === 'needs' ? 'Respond' : 'Unblock'}
+                        Respond
                     </Button>
                 )}
+                {d.status === 'blocked' && <RetryButton d={d} />}
                 <Button
                     size="sm"
                     variant="ghost"
@@ -1364,6 +1366,36 @@ function DroidCard({
                 </Button>
             </CardFooter>
         </Card>
+    );
+}
+
+/** Run a blocked droid's failed task again, on its current model. */
+function RetryButton({ d }: { d: Droid }) {
+    const save = useSave();
+    const [busy, setBusy] = useState(false);
+    return (
+        <Button
+            size="sm"
+            variant="outline"
+            className="h-8 border-blocked/40 text-blocked hover:text-blocked"
+            disabled={busy}
+            title={`Try again on ${d.model}`}
+            onClick={async () => {
+                setBusy(true);
+                const res = await save(
+                    'POST',
+                    `/factory/droids/${encodeURIComponent(d.id)}/retry`,
+                );
+                setBusy(false);
+                if (res)
+                    toast.success(`${d.unit} ${d.name} is trying again`, {
+                        description: `On ${d.model}`,
+                    });
+            }}
+        >
+            <RotateCcwIcon />
+            Retry
+        </Button>
     );
 }
 
@@ -2049,6 +2081,9 @@ function Roster({
                                                         assign={assign}
                                                         label="Assign"
                                                     />
+                                                )}
+                                                {d.status === 'blocked' && (
+                                                    <RetryButton d={d} />
                                                 )}
                                                 <EditDroidButton d={d} />
                                                 <Tooltip>

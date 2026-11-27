@@ -142,12 +142,20 @@ export function ChatSheet({
             : (d?.id ?? '');
     const [sending, setSending] = useState(false);
     const [text, setText] = useState('');
-    const [model, setModel] = useState(d?.model ?? '');
     const save = useSave();
+    // The model is the droid's own: saved right away, so its next run uses it.
+    const switchModel = async (m: string) => {
+        if (!d || m === d.model) return;
+        const res = await save(
+            'PATCH',
+            `/factory/droids/${encodeURIComponent(d.id)}`,
+            { model: m },
+        );
+        if (res) toast.success(`${d.unit} ${d.name} now runs on ${m}`);
+    };
     const ask = store.asks?.[key];
     const thinking = sending || !!ask;
     useEffect(() => {
-        if (d) setModel(d.model);
         setSending(false);
         setText('');
     }, [key]); // eslint-disable-line
@@ -256,12 +264,6 @@ export function ChatSheet({
             first && first.id === undefined && first.kind === 'agent'
                 ? first.text
                 : undefined;
-        if (model && model !== d.model) {
-            d.model = model;
-            void save('PATCH', `/factory/droids/${encodeURIComponent(d.id)}`, {
-                model,
-            });
-        }
         items.push({ kind: 'user', text: t });
         setText('');
         setSending(true);
@@ -469,8 +471,10 @@ export function ChatSheet({
                                 <PromptInputFooter>
                                     <PromptInputTools>
                                         <PromptInputSelect
-                                            value={model}
-                                            onValueChange={setModel}
+                                            value={d.model}
+                                            onValueChange={(m) =>
+                                                void switchModel(m)
+                                            }
                                         >
                                             <PromptInputSelectTrigger className="h-8">
                                                 <EngineLogo
@@ -480,10 +484,15 @@ export function ChatSheet({
                                                 <PromptInputSelectValue />
                                             </PromptInputSelectTrigger>
                                             <PromptInputSelectContent>
-                                                {modelsFor(
-                                                    store,
-                                                    d.provider,
-                                                ).map((m) => (
+                                                {[
+                                                    ...new Set([
+                                                        ...modelsFor(
+                                                            store,
+                                                            d.provider,
+                                                        ),
+                                                        d.model,
+                                                    ]),
+                                                ].map((m) => (
                                                     <PromptInputSelectItem
                                                         key={m}
                                                         value={m}

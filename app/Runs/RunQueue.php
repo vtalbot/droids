@@ -54,6 +54,44 @@ class RunQueue
         ]);
     }
 
+    /** The droid's last task run, when it failed and the droid is still blocked on it. */
+    public static function lastFailure(Droid $droid): ?Run
+    {
+        if ($droid->status !== 'blocked' || ! $droid->task_id) {
+            return null;
+        }
+        $last = Run::with(['task.project', 'droid'])->where('droid_id', $droid->id)->where('task_id', $droid->task_id)
+            ->whereIn('kind', Run::TASK_KINDS)->latest('id')->first();
+
+        return $last?->status === 'failed' ? $last : null;
+    }
+
+    /** Run a failed task run again, on the droid's current model, or null when it can't run. */
+    public function retry(Run $failed): ?Run
+    {
+        $task = $failed->task;
+        $droid = $failed->droid;
+        if (! $task || ! $task->project->isLinked()) {
+            return null;
+        }
+        $this->cancelFor($droid, 'Replaced by a retry');
+        $droid->update([
+            'status' => 'working', 'task_id' => $task->id, 'project_id' => $task->project_id,
+            'step' => "Queued: try #{$task->number} again on {$droid->model}", 'progress' => 0, 'minutes' => 0,
+        ]);
+
+        return Run::create([
+            'droid_id' => $droid->id,
+            'task_id' => $task->id,
+            'project_id' => $failed->project_id,
+            'kind' => $failed->kind,
+            'status' => 'queued',
+            'branch' => $failed->branch,
+            'pr_number' => $failed->pr_number,
+            'input' => $failed->input,
+        ]);
+    }
+
     public function cancelFor(Droid $droid, string $reason): void
     {
         Run::where('droid_id', $droid->id)->whereIn('kind', Run::TASK_KINDS)->whereIn('status', Run::ACTIVE)
