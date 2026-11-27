@@ -20,10 +20,10 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { useSave } from '@/factory/api';
+import { useSave, useStore } from '@/factory/api';
 import {
     AUTONOMY,
-    PROVIDERS,
+    modelsFor,
     ROLES,
     type Autonomy,
     type Droid,
@@ -42,7 +42,9 @@ export function EditDroidButton({ d }: { d: Droid }) {
     const [instructions, setInstructions] = useState(d.instructions ?? '');
     const [busy, setBusy] = useState(false);
     const guide = ROLES.find((r) => r.role === role);
-    const models = PROVIDERS[d.provider].models;
+    const store = useStore();
+    // Keep the droid's model in the list even if no worker has seen it lately.
+    const models = [...new Set([...modelsFor(store, d.provider), d.model])];
 
     const reset = () => {
         setName(d.name);

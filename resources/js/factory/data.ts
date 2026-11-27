@@ -170,6 +170,12 @@ export const PROVIDERS: Record<
 };
 
 /** What each role does and the model that fits it; light roles run well on small models. */
+/** The models to offer for an engine: what the workers found, else the built-in list. */
+export const modelsFor = (
+    store: { models?: Partial<Record<Provider, string[]>> } | null,
+    provider: Provider,
+) => store?.models?.[provider] ?? PROVIDERS[provider].models;
+
 export const ROLES: {
     role: string;
     does: string;

@@ -145,6 +145,8 @@ export type Store = {
     github?: { configured: boolean };
     runs?: Record<string, Run>;
     asks?: Record<string, Ask>;
+    /** The models to offer per engine, including the ones workers found. */
+    models?: Partial<Record<Provider, string[]>>;
     cloudConnected?: boolean;
     design?: Record<string, DesignFile[]>;
     memory?: Record<

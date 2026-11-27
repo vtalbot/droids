@@ -7,6 +7,7 @@ use App\Http\Controllers\Factory\CloudVariableController;
 use App\Http\Controllers\Factory\DroidController;
 use App\Models\ChatMessage;
 use App\Models\Droid;
+use App\Models\EngineModel;
 use App\Models\Milestone;
 use App\Models\Project;
 use App\Models\Run;
@@ -225,7 +226,7 @@ class Conversation
             $projects[] = "- {$p->name} ({$p->repo}): {$open->count()} open issues".($labels ? ", labels: {$labels}" : '').($p->designFiles()->exists() ? ', has a design' : '');
         }
         $proposed = collect($this->takenNames())->unique(fn (string $n) => mb_strtolower($n))->implode(', ');
-        $models = collect(DroidController::MODELS)->map(fn (array $m, string $p) => "{$p}: ".implode(', ', $m))->implode('; ');
+        $models = collect(EngineModel::labels())->map(fn (array $m, string $p) => "{$p}: ".implode(', ', $m))->implode('; ');
         $roles = [];
         foreach (DroidController::ROLE_GUIDE as $role => [$does, $fits]) {
             $roles[] = "  - {$role}: {$does} ({$fits})";
@@ -573,7 +574,7 @@ class Conversation
             }
             $taken[$key] = true;
             $provider = ($c['provider'] ?? '') === 'codex' ? 'codex' : 'claude';
-            $models = DroidController::MODELS[$provider];
+            $models = EngineModel::labels()[$provider];
             $out[] = [
                 'name' => Str::limit(trim($c['name']), 20, ''),
                 'role' => in_array($c['role'] ?? null, DroidController::ROLES, true) ? $c['role'] : 'Builder',

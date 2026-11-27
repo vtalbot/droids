@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Factory;
 
 use App\Models\Activity;
 use App\Models\Droid;
+use App\Models\EngineModel;
 use App\Models\Project;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -91,7 +92,7 @@ class DroidController extends Controller
     {
         $data = $request->validate([
             'name' => ['sometimes', 'string', 'max:40'],
-            'model' => ['sometimes', 'string', Rule::in(self::MODELS[$droid->provider] ?? [])],
+            'model' => ['sometimes', 'string', Rule::in(EngineModel::labels()[$droid->provider] ?? [])],
             'role' => ['sometimes', Rule::in(self::ROLES)],
             'autonomy' => ['sometimes', Rule::in(['ask', 'pr', 'merge'])],
             'instructions' => ['sometimes', 'nullable', 'string', 'max:5000'],

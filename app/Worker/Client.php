@@ -41,6 +41,16 @@ class Client
         $this->http()->post('usage', ['usage' => $usage]);
     }
 
+    /**
+     * Report the models this machine's CLI logins can use.
+     *
+     * @param  array<string, list<array{id: string, label: string}>>  $models
+     */
+    public function models(array $models): void
+    {
+        $this->http()->throw()->post('models', ['models' => $models]);
+    }
+
     /** Report progress. Returns false when the server cancelled the run. */
     public function progress(int $run, ?string $step, ?float $progress, string $log): bool
     {

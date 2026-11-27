@@ -7,6 +7,7 @@ use App\Models\ChatMessage;
 use App\Models\CloudConnection;
 use App\Models\DesignFile;
 use App\Models\Droid;
+use App\Models\EngineModel;
 use App\Models\GithubApp;
 use App\Models\Milestone;
 use App\Models\Project;
@@ -93,6 +94,8 @@ class FactoryState
             ]]),
             'runs' => $this->runs($slugs),
             'asks' => $this->asks(),
+            // The models to offer per engine, with the ones workers found.
+            'models' => EngineModel::labels(),
             'workers' => [
                 'total' => Worker::count(),
                 'online' => Worker::where('last_seen_at', '>', now()->subMinutes(2))->count(),

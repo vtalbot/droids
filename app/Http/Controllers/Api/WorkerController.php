@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Factory\DroidController;
+use App\Models\EngineModel;
 use App\Models\Run;
 use App\Models\Subscription;
 use App\Models\Worker;
@@ -63,6 +65,28 @@ class WorkerController extends Controller
                 'usage_at' => now(),
                 'limited_until' => $until ?? ($sub->isLimited() ? $sub->limited_until : null),
             ])->save();
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** The models the worker's CLI logins can use. */
+    public function models(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'models' => ['present', 'array'],
+            'models.*' => ['array', 'max:100'],
+            'models.*.*.id' => ['required', 'string', 'max:80', 'regex:/^[A-Za-z0-9._:\/\-\[\]]+$/'],
+            'models.*.*.label' => ['required', 'string', 'max:60'],
+        ]);
+        $this->worker($request);
+        foreach (array_intersect_key($data['models'], DroidController::MODELS) as $provider => $models) {
+            foreach ($models as $m) {
+                EngineModel::updateOrCreate(
+                    ['provider' => $provider, 'model_id' => $m['id']],
+                    ['label' => trim($m['label']), 'seen_at' => now()],
+                );
+            }
         }
 
         return response()->json(['ok' => true]);

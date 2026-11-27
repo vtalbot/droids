@@ -85,7 +85,13 @@ import {
     PromptInputTextarea,
     PromptInputTools,
 } from '@/components/ai-elements/prompt-input';
-import { PROVIDERS, STATUS, type ChatItem, type Droid } from '@/factory/data';
+import {
+    modelsFor,
+    PROVIDERS,
+    STATUS,
+    type ChatItem,
+    type Droid,
+} from '@/factory/data';
 import { PLAN_DRAFTS, PROPOSALS, RETRO } from '@/factory/demo';
 import { DroidAvatar } from '@/factory/droid-avatar';
 import { EngineLogo } from '@/factory/logos';
@@ -474,9 +480,10 @@ export function ChatSheet({
                                                 <PromptInputSelectValue />
                                             </PromptInputSelectTrigger>
                                             <PromptInputSelectContent>
-                                                {PROVIDERS[
-                                                    d.provider
-                                                ].models.map((m) => (
+                                                {modelsFor(
+                                                    store,
+                                                    d.provider,
+                                                ).map((m) => (
                                                     <PromptInputSelectItem
                                                         key={m}
                                                         value={m}
