@@ -1,6 +1,7 @@
 <?php
 
 use App\Cloud\CloudSync;
+use App\Factory\Autopilot;
 use App\GitHub\RepositorySync;
 use App\Models\CloudConnection;
 use App\Models\Project;
@@ -44,6 +45,14 @@ Artisan::command('droids:sweep', function (RunQueue $runs) {
 })->purpose('Fail droid runs whose worker stopped reporting');
 
 Schedule::command('droids:sweep')->everyFiveMinutes();
+
+// Projects with autopilot on: triage Ideas, hand Ready cards to idle builders.
+Artisan::command('droids:autopilot', function (Autopilot $autopilot) {
+    $done = $autopilot->tick();
+    $this->info("Started {$done['triage']} triage run(s), assigned {$done['assigned']} card(s).");
+})->purpose('Triage Ideas and give Ready cards to idle builders on projects that turned it on');
+
+Schedule::command('droids:autopilot')->everyMinute()->withoutOverlapping();
 
 // Refresh linked Laravel Cloud apps for the Cloud panel.
 Artisan::command('cloud:sync', function (CloudSync $sync) {

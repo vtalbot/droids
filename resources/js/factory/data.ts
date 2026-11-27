@@ -11,6 +11,10 @@ export type Project = {
     color: string;
     linked?: boolean;
     synced?: string | null;
+    /** The Planner triages Ideas into Ready for droids. */
+    autoTriage?: boolean;
+    /** Idle builders on the project take cards from Ready for droids. */
+    autoBuild?: boolean;
     milestone: string;
     due: string;
     done: number;
@@ -42,6 +46,8 @@ export type Issue = {
     builder?: string;
     reviewer?: string;
     engine?: Provider;
+    /** What the triage droid asked before the card can be built. */
+    question?: string | null;
 };
 /** A chat item as stored on the server; `id` is missing on items not saved yet. */
 export type ChatItem = { id?: number } & ChatItemBody;
@@ -168,7 +174,7 @@ export const COLS: { key: ColKey; label: string; hint: string }[] = [
     {
         key: 'backlog',
         label: 'Ideas',
-        hint: 'Not planned yet. Move a card to Ready for droids when it is clear enough to build.',
+        hint: 'Not planned yet. Move a card to Ready for droids when it is clear enough to build, or turn on triage in the project crew.',
     },
     {
         key: 'ready',

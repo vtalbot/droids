@@ -276,6 +276,19 @@ export function TaskSheet({
                         </SheetHeader>
 
                         <div className="grid gap-4 p-5">
+                            {i.question && i.col === 'backlog' && (
+                                <div className="rounded-lg border border-needs/30 bg-needs/10 p-3 text-sm">
+                                    <div className="font-medium text-needs">
+                                        The planner needs an answer before this
+                                        is ready
+                                    </div>
+                                    <p className="mt-1">{i.question}</p>
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                        Answer in the project discussion, and
+                                        the card is triaged again.
+                                    </p>
+                                </div>
+                            )}
                             <div className="grid grid-cols-[96px_minmax(0,1fr)] items-center gap-x-3 gap-y-3 text-sm">
                                 <span className="text-muted-foreground">
                                     Status

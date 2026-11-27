@@ -25,6 +25,9 @@ use Illuminate\Support\Carbon;
  * @property int|null $memory_droid_id
  * @property Carbon|null $memory_updated_at
  * @property string|null $domain the domain whose DNS the project manages on Cloudflare
+ * @property string|null $resend_domain_id
+ * @property bool $auto_triage the project's Planner triages the Ideas column
+ * @property bool $auto_build idle builders on the project take cards from Ready for droids
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -40,6 +43,8 @@ class Project extends Model
             'synced_at' => 'datetime',
             'cloud_synced_at' => 'datetime',
             'memory_updated_at' => 'datetime',
+            'auto_triage' => 'boolean',
+            'auto_build' => 'boolean',
         ];
     }
 
