@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Integrations\Cloudflare;
+use App\Integrations\Resend;
 use App\Models\ServiceKey;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
@@ -14,10 +15,10 @@ use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
-/** Settings > DNS: the Cloudflare API token projects manage their DNS records with. */
+/** Settings > DNS & email: the Cloudflare token for DNS records and the Resend key for email domains. */
 class ServiceController extends Controller
 {
-    private const NAMES = ['cloudflare' => 'Cloudflare'];
+    private const NAMES = ['cloudflare' => 'Cloudflare', 'resend' => 'Resend'];
 
     public function edit(): Response
     {
@@ -40,7 +41,7 @@ class ServiceController extends Controller
         $name = self::NAMES[$data['service']];
 
         try {
-            $label = $this->cloudflare($token);
+            $label = $data['service'] === 'resend' ? $this->resend($token) : $this->cloudflare($token);
         } catch (RequestException $e) {
             throw ValidationException::withMessages(['token' => in_array($e->response->status(), [400, 401, 403], true)
                 ? "{$name} did not accept this key. Check that you copied all of it and that it has the permissions listed below."
@@ -62,6 +63,14 @@ class ServiceController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => self::NAMES[$service].' disconnected.']);
 
         return to_route('services.edit');
+    }
+
+    private function resend(string $token): string
+    {
+        // A sending-only key can't manage domains, and listing them is the check.
+        (new Resend($token))->domains();
+
+        return 'Full access key';
     }
 
     private function cloudflare(string $token): string

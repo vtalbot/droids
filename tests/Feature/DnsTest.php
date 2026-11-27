@@ -90,6 +90,6 @@ class DnsTest extends TestCase
 
         $this->getJson('/factory/projects/droids/domain')->assertOk()->assertJsonPath('cloudflare', false);
         $this->postJson('/factory/projects/droids/dns', ['type' => 'A', 'name' => '@', 'content' => '1.2.3.4'])
-            ->assertUnprocessable()->assertJsonPath('message', 'Add a Cloudflare API token in Settings > DNS first.');
+            ->assertUnprocessable()->assertJsonPath('message', 'Add a Cloudflare API token in Settings > DNS & email first.');
     }
 }

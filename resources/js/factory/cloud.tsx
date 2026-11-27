@@ -67,6 +67,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { BUILD_LOG } from '@/factory/demo';
+import { VariablesCard } from '@/factory/email';
 import { applyServerStore, request, useSave } from '@/factory/api';
 import {
     DEPLOY_STEPS,
@@ -576,6 +577,10 @@ export function CloudPanel({
                     <EnvCard key={e.id} e={e} />
                 ))}
             </div>
+
+            {linked && app.envs.length > 0 && (
+                <VariablesCard pid={pid} envs={app.envs} />
+            )}
 
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
                 <Card className="gap-3 py-4">

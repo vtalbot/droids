@@ -363,4 +363,18 @@ class ConversationTest extends TestCase
         $this->assertStringContainsString('which this planning follows on from', $prompt);
         $this->assertStringContainsString('Person: We agreed dark mode ships first.', $prompt);
     }
+
+    public function test_a_discussion_on_a_cloud_project_can_propose_environment_variables(): void
+    {
+        $this->project->update(['cloud_application_id' => 'app-1', 'cloud_snapshot' => ['envs' => [['id' => 'env-prod', 'name' => 'production']]]]);
+        $this->ask('chat', 'Turn on Sentry');
+        $job = $this->claim();
+        $this->assertStringContainsString('environments: production', $job['prompt']);
+        $this->assertStringContainsString('"variables"', $job['prompt']);
+        $this->finish($job['id'], ['status' => 'succeeded', 'summary' => '{"message": "Ready below.", "variables": [{"key": "sentry_dsn", "value": "", "environment": "production"}, {"key": "1BAD", "value": "x"}]}']);
+
+        $chat = $this->getJson('/factory/state')->json('store.chats')['discuss:droids'];
+        $this->assertSame('variables', end($chat)['kind']);
+        $this->assertSame([['key' => 'SENTRY_DSN', 'value' => '', 'environment' => 'production']], end($chat)['items']);
+    }
 }

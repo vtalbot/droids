@@ -89,6 +89,12 @@ type ChatItemBody =
           items?: Proposal[];
       }
     | {
+          kind: 'variables';
+          project: string;
+          items: { key: string; value: string; environment?: string }[];
+          applied?: boolean;
+      }
+    | {
           kind: 'candidates';
           items: Candidate[];
       }

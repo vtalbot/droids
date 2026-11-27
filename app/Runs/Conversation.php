@@ -2,6 +2,7 @@
 
 namespace App\Runs;
 
+use App\Http\Controllers\Factory\CloudVariableController;
 use App\Http\Controllers\Factory\DroidController;
 use App\Models\ChatMessage;
 use App\Models\Droid;
@@ -265,6 +266,7 @@ class Conversation
             '',
             'Answer the person directly and ground what you say in the code and the board.',
             'When the person wants a milestone, put it in "milestones". When they want work planned, or agree to a plan you discussed, draft the issues in "drafts". Leave both empty otherwise.',
+            ...$this->cloudLines($project),
             ...self::ACTION_RULES,
         ];
     }
@@ -295,7 +297,7 @@ class Conversation
         $shape = match ($kind) {
             'plan' => '{"message": "...", "reasoning": "...", "drafts": ['.self::DRAFT.'], "next": ["..."]}',
             'chat' => $project
-                ? '{"message": "...", "reasoning": "...", "milestones": [{"title": "...", "goal": "...", "due": "YYYY-MM-DD" or null}], "drafts": ['.self::DRAFT.'], "next": ["..."]}'
+                ? '{"message": "...", "reasoning": "...", "milestones": [{"title": "...", "goal": "...", "due": "YYYY-MM-DD" or null}], "drafts": ['.self::DRAFT.'], "variables": [{"key": "...", "value": "...", "environment": "..." or null}], "next": ["..."]}'
                 : '{"message": "...", "reasoning": "..."}',
             'propose' => '{"message": "...", "reasoning": "...", "proposals": [{"kind": "feature" or "milestone", "title": "...", "why": "...", "effort": "...", "engine": "claude" or "codex"}], "next": ["..."]}',
             'reflect' => '{"message": "...", "reasoning": "...", "good": ["..."], "improve": ["..."], "rules": ["..."]}',
@@ -408,6 +410,28 @@ class Conversation
         if ($items = $this->drafts($data['drafts'] ?? null)) {
             $this->say($run, 'drafts', ['project' => $slug, 'items' => $items]);
         }
+        if ($run->project?->cloud_application_id && ($items = $this->variables($data['variables'] ?? null))) {
+            $this->say($run, 'variables', ['project' => $slug, 'items' => $items]);
+        }
+    }
+
+    /** @return list<array{key: string, value: string, environment?: string}> */
+    private function variables(mixed $list): array
+    {
+        $out = [];
+        foreach (is_array($list) ? array_slice($list, 0, 20) : [] as $v) {
+            $key = is_array($v) && is_string($v['key'] ?? null) ? strtoupper(trim($v['key'])) : '';
+            if (preg_match(CloudVariableController::KEY, $key) !== 1 || strlen($key) > 255) {
+                continue;
+            }
+            $out[] = [
+                'key' => $key,
+                'value' => is_scalar($v['value'] ?? null) ? Str::limit((string) $v['value'], 2000, '') : '',
+                ...(is_string($v['environment'] ?? null) && $v['environment'] !== '' ? ['environment' => Str::limit($v['environment'], 60, '')] : []),
+            ];
+        }
+
+        return $out;
     }
 
     /** @param array{changed: list<string>, removed: list<string>}|null $design */
@@ -593,6 +617,20 @@ class Conversation
         }
 
         return in_array($run->kind, ['chat', 'reflect'], true) ? $run->droid->project : null;
+    }
+
+    /** @return list<string> */
+    private function cloudLines(Project $project): array
+    {
+        if (! $project->cloud_application_id) {
+            return [];
+        }
+        $envs = implode(', ', array_map(fn (array $e) => (string) $e['name'], $project->cloud_snapshot['envs'] ?? []));
+
+        return [
+            "The project runs on Laravel Cloud (environments: {$envs}). When the person wants environment variables set or changed there, put them in \"variables\", with the environment by name, or null for the first one. They appear as a card the person reviews and applies, and the app needs a deploy to pick them up.",
+            'Never put a secret you were not given in "value": leave it empty for the person to fill in.',
+        ];
     }
 
     /** @return list<string> */

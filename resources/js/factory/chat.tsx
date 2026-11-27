@@ -19,6 +19,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import {
     Card,
     CardContent,
@@ -89,7 +90,7 @@ import { PLAN_DRAFTS, PROPOSALS, RETRO } from '@/factory/demo';
 import { DroidAvatar } from '@/factory/droid-avatar';
 import { EngineLogo } from '@/factory/logos';
 import { cn } from '@/lib/utils';
-import { useSave } from '@/factory/api';
+import { request, useSave } from '@/factory/api';
 import type { Store } from '@/factory/app';
 
 export type ChatTarget = {
@@ -633,6 +634,8 @@ function ChatRow({
         return <Retro m={m} d={d} bump={bump} store={store} />;
     if (m.kind === 'proposals')
         return <Proposals m={m} store={store} bump={bump} proj={proj} />;
+    if (m.kind === 'variables')
+        return <VariablesProposal m={m} store={store} bump={bump} />;
     if (m.kind === 'candidates')
         return (
             <Task defaultOpen>
@@ -1051,5 +1054,122 @@ function Proposals({
                 );
             })}
         </div>
+    );
+}
+
+/** Environment variables a droid proposed for the project's Laravel Cloud app. */
+function VariablesProposal({
+    m,
+    store,
+    bump,
+}: {
+    m: Extract<ChatItem, { kind: 'variables' }>;
+    store: Store;
+    bump: () => void;
+}) {
+    const envs = store.cloud?.[m.project]?.envs ?? [];
+    const named = m.items.find((i) => i.environment)?.environment;
+    const [env, setEnv] = useState(
+        () =>
+            envs.find((e) => e.name.toLowerCase() === named?.toLowerCase())
+                ?.id ??
+            envs[0]?.id ??
+            '',
+    );
+    const [values, setValues] = useState(() => m.items.map((i) => i.value));
+    const [busy, setBusy] = useState(false);
+    const mark = useMark();
+    const envName = envs.find((e) => e.id === env)?.name ?? '';
+    const apply = async () => {
+        setBusy(true);
+        try {
+            await request(
+                'PUT',
+                `/factory/projects/${encodeURIComponent(m.project)}/cloud/environments/${encodeURIComponent(env)}/variables`,
+                {
+                    variables: m.items.map((i, k) => ({
+                        key: i.key,
+                        value: values[k],
+                    })),
+                },
+            );
+            await mark(m, { applied: true }, bump);
+            toast.success(
+                `${m.items.length} variable${m.items.length === 1 ? '' : 's'} set on ${envName}`,
+                { description: 'Deploy the environment to apply them.' },
+            );
+        } catch (e) {
+            toast.error((e as Error).message);
+        } finally {
+            setBusy(false);
+        }
+    };
+    return (
+        <Card className="gap-3 py-4 shadow-none">
+            <CardHeader className="px-4">
+                <CardTitle className="text-base">
+                    Environment variables
+                </CardTitle>
+                <CardDescription className="flex flex-wrap items-center gap-1.5">
+                    Laravel Cloud ·
+                    {envs.length > 0 && !m.applied ? (
+                        <select
+                            aria-label="Environment for these variables"
+                            className="rounded-md border bg-background px-1.5 py-0.5 text-xs text-foreground"
+                            value={env}
+                            onChange={(e) => setEnv(e.target.value)}
+                        >
+                            {envs.map((e) => (
+                                <option key={e.id} value={e.id}>
+                                    {e.name}
+                                </option>
+                            ))}
+                        </select>
+                    ) : (
+                        <span>{envName || 'not linked'}</span>
+                    )}
+                </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-2 px-4">
+                {m.items.map((i, k) => (
+                    <div key={i.key} className="flex items-center gap-2">
+                        <span className="w-40 shrink-0 truncate font-mono text-xs">
+                            {i.key}
+                        </span>
+                        <Input
+                            aria-label={`Value of ${i.key}`}
+                            className="h-8 font-mono text-xs"
+                            value={values[k]}
+                            placeholder="fill in"
+                            disabled={!!m.applied}
+                            onChange={(e) =>
+                                setValues((v) =>
+                                    v.map((x, j) =>
+                                        j === k ? e.target.value : x,
+                                    ),
+                                )
+                            }
+                        />
+                    </div>
+                ))}
+            </CardContent>
+            <CardFooter className="px-4">
+                {m.applied ? (
+                    <span className="flex items-center gap-1.5 text-sm text-done">
+                        <CheckIcon className="size-4" />
+                        Set on Laravel Cloud
+                    </span>
+                ) : (
+                    <Button
+                        size="sm"
+                        disabled={busy || !env}
+                        onClick={() => void apply()}
+                    >
+                        Set {m.items.length} variable
+                        {m.items.length === 1 ? '' : 's'} on {envName}
+                    </Button>
+                )}
+            </CardFooter>
+        </Card>
     );
 }

@@ -150,7 +150,7 @@ class DomainController extends Controller
         $detail = $json['errors'][0]['message'] ?? $json['message'] ?? null;
 
         return match ($e->response->status()) {
-            401 => "{$service} rejected the API token. Add a new one in Settings > DNS.",
+            401 => "{$service} rejected the API token. Add a new one in Settings > DNS & email.",
             403 => "The {$service} token is not allowed to do that. Check its permissions.",
             default => "{$service}: ".(is_string($detail) && $detail !== '' ? $detail : "error {$e->response->status()}"),
         };

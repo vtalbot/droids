@@ -9,6 +9,6 @@ class NotConnected extends RuntimeException
 {
     public static function service(string $name): self
     {
-        return new self("Add a {$name} API token in Settings > DNS first.");
+        return new self("Add a {$name} API token in Settings > DNS & email first.");
     }
 }

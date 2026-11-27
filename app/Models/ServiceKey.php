@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * An API key for an outside service: "cloudflare" for DNS.
+ * An API key for an outside service: "cloudflare" for DNS, "resend" for email domains.
  *
  * @property int $id
  * @property string $service
@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class ServiceKey extends Model
 {
-    public const SERVICES = ['cloudflare'];
+    public const SERVICES = ['cloudflare', 'resend'];
 
     protected $guarded = [];
 

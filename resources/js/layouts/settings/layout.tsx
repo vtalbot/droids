@@ -42,7 +42,7 @@ const sidebarNavItems: NavItem[] = [
         icon: null,
     },
     {
-        title: 'DNS',
+        title: 'DNS & email',
         href: '/settings/services',
         icon: null,
     },
