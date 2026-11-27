@@ -27,6 +27,9 @@ class Conversation
     /** Builder runs a retrospective looks back over. */
     private const RETRO_RUNS = 10;
 
+    /** The starter droids Assemble droid always offers (resources/js/factory/dialogs.tsx). */
+    private const STARTER_NAMES = ['Mira', 'Bolt', 'Lumen', 'Atlas', 'Iris'];
+
     public function __construct(private Design $design, private Memory $memory) {}
 
     public static function topic(string $kind, Droid $droid, ?Project $project): string
@@ -180,11 +183,10 @@ class Conversation
                 ->map(fn (int $n, string $l) => "{$l} ({$n})")->implode(', ');
             $projects[] = "- {$p->name} ({$p->repo}): {$open->count()} open issues".($labels ? ", labels: {$labels}" : '').($p->designFiles()->exists() ? ', has a design' : '');
         }
-        $proposed = ChatMessage::where('topic', 'recruit')->where('kind', 'candidates')->get()
-            ->flatMap(fn (ChatMessage $m) => array_column($m->payload['items'] ?? [], 'name'))->unique()->implode(', ');
+        $proposed = collect($this->takenNames())->unique(fn (string $n) => mb_strtolower($n))->implode(', ');
         $models = collect(DroidController::MODELS)->map(fn (array $m, string $p) => "{$p}: ".implode(', ', $m))->implode('; ');
 
-        return array_values(array_filter([
+        return [
             'You are the HR droid of this factory: you propose new droids for the person to hire. Droids are not tied to a project when hired; they are given tasks on any project later.',
             '',
             'The crew today:',
@@ -192,16 +194,16 @@ class Conversation
             '',
             'Projects:',
             ...($projects ?: ['- None yet.']),
-            $proposed !== '' ? "\nYou already proposed: {$proposed}. Propose new names, not these again." : null,
+            "\nNames already taken (crew, starters and earlier candidates): {$proposed}. Every candidate needs a new name that is not in this list, and no two candidates may share a name. A candidate with a taken name is dropped.",
             '',
             'Propose 4 candidate droids that answer the person\'s request. With no specific request, fill the gaps in the crew for the projects above.',
-            '- "name": a short, friendly one-word droid name, different from the crew\'s.',
+            '- "name": a short, friendly one-word droid name that is not taken.',
             '- "role": one of '.implode(', ', DroidController::ROLES).'.',
             "- \"provider\" and \"model\": pick from {$models}. Claude fits design, review and careful work; Codex fits scoped implementation.",
             '- "pitch": two sentences in the droid\'s own voice, introducing itself and what it is good at.',
             '- "why": one sentence on why the person needs it, grounded in their request, the crew or the projects.',
             '- "instructions": standing instructions for the droid, three or four short rules.',
-        ], fn ($l) => $l !== null));
+        ];
     }
 
     /** @return list<string> */
@@ -406,11 +408,21 @@ class Conversation
     /** @return list<array{name: string, role: string, provider: string, model: string, pitch: string, why: string, instructions: string}> */
     private function candidates(mixed $list): array
     {
+        // A name already in the crew, already proposed, or twice in this batch is dropped.
+        $taken = [];
+        foreach ($this->takenNames() as $n) {
+            $taken[mb_strtolower($n)] = true;
+        }
         $out = [];
-        foreach (is_array($list) ? array_slice($list, 0, 6) : [] as $c) {
+        foreach (is_array($list) ? array_slice($list, 0, 8) : [] as $c) {
             if (! is_array($c) || ! is_string($c['name'] ?? null) || trim($c['name']) === '') {
                 continue;
             }
+            $key = mb_strtolower(Str::limit(trim($c['name']), 20, ''));
+            if (isset($taken[$key])) {
+                continue;
+            }
+            $taken[$key] = true;
             $provider = ($c['provider'] ?? '') === 'codex' ? 'codex' : 'claude';
             $models = DroidController::MODELS[$provider];
             $out[] = [
@@ -424,7 +436,32 @@ class Conversation
             ];
         }
 
-        return $out;
+        return array_slice($out, 0, 6);
+    }
+
+    /**
+     * Names the HR droid may not use again: the crew, the starters and every earlier proposal.
+     *
+     * @return list<string>
+     */
+    private function takenNames(): array
+    {
+        $names = [];
+        foreach (Droid::pluck('name') as $n) {
+            $names[] = (string) $n;
+        }
+        foreach (self::STARTER_NAMES as $n) {
+            $names[] = $n;
+        }
+        foreach (ChatMessage::where('topic', 'recruit')->where('kind', 'candidates')->get() as $m) {
+            foreach ($m->payload['items'] ?? [] as $item) {
+                if (is_string($item['name'] ?? null)) {
+                    $names[] = $item['name'];
+                }
+            }
+        }
+
+        return $names;
     }
 
     /** @return list<string> */
