@@ -320,4 +320,47 @@ class ConversationTest extends TestCase
         $this->assertSame(['agent', 'user', 'agent', 'user'], array_column($chat, 'kind'), 'one intro, then both questions');
         $this->assertStringContainsString('Theme lives in app.css.', (string) $this->project->refresh()->memory);
     }
+
+    public function test_a_project_discussion_offers_milestones_and_issues_to_create(): void
+    {
+        $this->ask('chat', 'Let us plan dark mode on a new milestone');
+        $job = $this->claim();
+        $this->assertStringContainsString('"milestones"', $job['prompt']);
+        $this->assertStringContainsString('never say you created something', $job['prompt']);
+        $this->finish($job['id'], ['status' => 'succeeded', 'summary' => '{"message": "Both are ready below.", "next": ["Draft the tests too", ""],
+            "milestones": [{"title": "Dark mode", "goal": "Ship a dark theme.", "due": "2027-01-15"}, {"title": ""}],
+            "drafts": [{"title": "Add a theme store", "engine": "codex", "size": "S", "milestone": "Dark mode", "feature": "Theme"}]}']);
+
+        $chat = $this->getJson('/factory/state')->json('store.chats')['discuss:droids'];
+        $this->assertSame(['agent', 'user', 'agent', 'proposals', 'drafts'], array_column($chat, 'kind'));
+        $this->assertSame(['Draft the tests too'], $chat[2]['next']);
+        $this->assertSame([['kind' => 'milestone', 'title' => 'Dark mode', 'why' => 'Ship a dark theme.', 'effort' => 'due 2027-01-15', 'engine' => 'claude', 'due' => '2027-01-15']], $chat[3]['items']);
+        $this->assertSame(['Dark mode', 'Theme'], [$chat[4]['items'][0]['milestone'], $chat[4]['items'][0]['feature']]);
+    }
+
+    public function test_issues_can_be_filed_on_a_milestone_and_feature_by_name(): void
+    {
+        $milestone = $this->project->milestones()->create(['name' => 'Dark mode', 'state' => 'planned', 'position' => 1]);
+        $this->project->update(['github_installation_id' => null]);
+
+        $this->postJson('/factory/projects/droids/tasks', ['tasks' => [
+            ['title' => 'Add a theme store', 'milestone' => $milestone->id, 'feature_name' => 'Theme'],
+            ['title' => 'Dark palette', 'milestone' => $milestone->id, 'feature_name' => 'theme'],
+            ['title' => 'Docs', 'milestone' => $milestone->id],
+        ]])->assertCreated();
+
+        $this->assertSame(['Theme', 'Unsorted'], $milestone->features()->orderBy('position')->pluck('name')->all());
+        $this->assertSame(2, $milestone->features()->where('name', 'Theme')->first()->tasks()->count());
+    }
+
+    public function test_planning_picks_up_the_project_discussion(): void
+    {
+        ChatMessage::create(['droid_id' => $this->droid->id, 'topic' => 'discuss:droids', 'kind' => 'user', 'payload' => ['text' => 'We agreed dark mode ships first.']]);
+
+        $this->ask('plan', 'Plan what we discussed');
+
+        $prompt = $this->claim()['prompt'];
+        $this->assertStringContainsString('which this planning follows on from', $prompt);
+        $this->assertStringContainsString('Person: We agreed dark mode ships first.', $prompt);
+    }
 }

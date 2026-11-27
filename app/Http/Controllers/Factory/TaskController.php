@@ -26,11 +26,14 @@ class TaskController extends Controller
             'tasks.*.engine' => ['sometimes', 'nullable', Rule::in(['claude', 'codex'])],
             'tasks.*.body' => ['sometimes', 'nullable', 'string', 'max:10000'],
             'tasks.*.feature' => ['sometimes', 'nullable', 'integer'],
+            // Or a milestone, with the feature named: it is made when missing.
+            'tasks.*.milestone' => ['sometimes', 'nullable', 'integer'],
+            'tasks.*.feature_name' => ['sometimes', 'nullable', 'string', 'max:120'],
         ]);
 
         if ($project->isLinked()) {
             $numbers = $this->github(fn () => array_map(function (array $t) use ($project, $writer) {
-                $feature = isset($t['feature']) ? $this->feature($project, (int) $t['feature']) : null;
+                $feature = $this->featureFor($project, $t);
                 $task = $writer->createIssue($project, $t['title'], $t['labels'] ?? [], $feature?->milestone, $t['body'] ?? null);
                 $task->update(['engine' => $t['engine'] ?? null, 'feature_id' => $feature->id ?? $task->feature_id]);
 
@@ -46,7 +49,7 @@ class TaskController extends Controller
             $numbers = [];
 
             foreach ($data['tasks'] as $t) {
-                $feature = isset($t['feature']) ? $this->feature($project, (int) $t['feature']) : null;
+                $feature = $this->featureFor($project, $t);
 
                 $project->tasks()->create([
                     'number' => $next,
@@ -64,6 +67,25 @@ class TaskController extends Controller
         });
 
         return $this->state(['numbers' => $numbers], 201);
+    }
+
+    /** @param array<string, mixed> $t */
+    private function featureFor(Project $project, array $t): ?Feature
+    {
+        if (isset($t['feature'])) {
+            return $this->feature($project, (int) $t['feature']);
+        }
+        if (! isset($t['milestone'])) {
+            return null;
+        }
+        $milestone = $project->milestones()->findOrFail((int) $t['milestone']);
+        $name = trim((string) ($t['feature_name'] ?? '')) ?: 'Unsorted';
+        $feature = $milestone->features()->whereRaw('lower(name) = ?', [mb_strtolower($name)])->first();
+
+        return $feature ?? $milestone->features()->create([
+            'name' => $name,
+            'position' => (int) $milestone->features()->max('position') + 1,
+        ]);
     }
 
     private function feature(Project $project, int $id): Feature
