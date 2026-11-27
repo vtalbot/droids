@@ -101,6 +101,33 @@ class MechanicTest extends TestCase
         $this->assertSame(2, Run::where('kind', 'unblock')->count());
     }
 
+    public function test_a_run_uses_the_model_the_droid_has_when_it_is_claimed(): void
+    {
+        Subscription::create(['slug' => 'chatgpt-pro', 'provider' => 'codex', 'name' => 'ChatGPT Pro', 'color' => 'blue', 'enabled' => true]);
+        SubscriptionSchedule::create(['provider' => 'codex', 'grid' => array_fill(0, 7, array_fill(0, 24, 'chatgpt-pro'))]);
+        $this->postJson('/factory/droids/cog/retry')->assertOk();
+        // Changed after the retry was queued: the worker still gets the new one.
+        $this->patchJson('/factory/droids/cog', ['model' => 'GPT-6.2-Sol'])->assertOk();
+
+        Http::fake([
+            'api.github.com/app/installations/42/access_tokens' => Http::response(['token' => 'ghs_fresh'], 201),
+            'api.github.com/repos/vtalbot/droids/issues/7*' => Http::response(['body' => 'Dark mode please.', 'title' => 'Add dark mode', 'labels' => []]),
+            'api.github.com/*' => Http::response([]),
+        ]);
+        $job = $this->withToken($this->token)->postJson('/api/worker/claim', ['subscriptions' => ['chatgpt-pro']])->assertOk()->json('run');
+        $this->assertSame('gpt-6.2-sol', $job['model']);
+        $this->withToken($this->token)->postJson("/api/worker/runs/{$job['id']}/finish", ['status' => 'failed', 'error' => 'Nope.'])->assertOk();
+        $this->assertSame('On gpt-6.2-sol: Nope.', $this->builder->fresh()->step);
+    }
+
+    public function test_a_droid_can_be_taken_off_its_task(): void
+    {
+        $this->postJson('/factory/droids/cog/release')->assertOk()->assertJsonPath('store.droids.0.status', 'idle');
+
+        $this->assertSame(['ready', null], [$this->task->fresh()->column, $this->task->fresh()->builder_id]);
+        $this->assertNull($this->builder->fresh()->task_id);
+    }
+
     public function test_deleting_a_droid_puts_its_task_back_and_keeps_the_discussion(): void
     {
         ChatMessage::create(['droid_id' => $this->builder->id, 'topic' => 'discuss:droids', 'kind' => 'agent', 'payload' => ['text' => 'Shared']]);

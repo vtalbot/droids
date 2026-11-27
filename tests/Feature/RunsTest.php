@@ -261,7 +261,7 @@ class RunsTest extends TestCase
         $this->withToken($this->token)->postJson("/api/worker/runs/{$id}/finish", ['status' => 'failed', 'error' => 'Tests would not pass.'])->assertOk();
 
         $this->assertSame('blocked', $this->droid->fresh()->status);
-        $this->assertSame('Tests would not pass.', $this->droid->fresh()->step);
+        $this->assertSame('On sonnet: Tests would not pass.', $this->droid->fresh()->step);
         $this->withToken($this->token)->postJson("/api/worker/runs/{$id}/progress", ['step' => 'x'])->assertStatus(409);
     }
 
