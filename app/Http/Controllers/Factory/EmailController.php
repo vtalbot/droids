@@ -12,6 +12,7 @@ use App\Models\Project;
 use App\Models\ServiceKey;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 /**
@@ -36,15 +37,29 @@ class EmailController extends Controller
     {
         $domain = $this->domain($project);
         $envs = $this->envs($project);
+        // Cloud sends only from its own verified sending domain, which may be a parent or child of the project's.
+        [$sending] = $envs !== [] ? $this->quietly('Laravel Cloud', fn () => $this->cloudSendingDomain($domain)) : [null];
+        $allowed = array_values(array_unique(array_filter([$domain, $sending['name'] ?? null])));
         $data = $request->validate([
             'environment' => [Rule::requiredIf($envs !== []), 'nullable', 'string', Rule::in(array_keys($envs))],
-            'from_address' => ['required', 'email', 'max:255', 'regex:/@'.preg_quote($domain, '/').'$/i'],
+            'from_address' => ['required', 'email', 'max:255', 'regex:/@('.implode('|', array_map(fn (string $d) => preg_quote($d, '/'), $allowed)).')$/i'],
             'from_name' => ['required', 'string', 'max:255'],
             'receiving' => ['boolean'],
-        ], ['from_address.regex' => "Send from an address at {$domain}."]);
+        ], ['from_address.regex' => 'Send from an address at '.implode(' or ', $allowed).'.']);
         $steps = [];
+        $warnings = [];
 
-        if ($envs !== [] && $data['environment']) {
+        $from = strtolower(Str::after($data['from_address'], '@'));
+        $blocked = match (true) {
+            $envs === [] || ! $data['environment'] => null,
+            $sending === null => "Laravel Cloud has no sending domain for {$domain} yet, so it can't send email. Its API can't create one: add {$domain} in Laravel Cloud under Email, add its DNS records, then press Set up email again.",
+            ! in_array($sending['status'], ['verified', 'active'], true) => "Laravel Cloud hasn't verified {$sending['name']} yet (it is {$sending['status']}), so it can't send from it. Once its DNS records are in and Cloud verifies it, press Set up email again.",
+            $sending['name'] !== $from => "Laravel Cloud's verified sending domain is {$sending['name']}: send from an address at {$sending['name']}, or add {$from} in Laravel Cloud under Email.",
+            default => null,
+        };
+        if ($blocked) {
+            $warnings[] = $blocked;
+        } elseif ($envs !== [] && $data['environment']) {
             $attached = ($envs[$data['environment']]['email'] ?? null) !== null;
             $this->attempt('Laravel Cloud', function () use ($data, $attached, $project, $sync) {
                 LaravelCloud::fromConnection()->resend($data['environment'], $data['from_address'], $data['from_name'], $attached);
@@ -66,7 +81,7 @@ class EmailController extends Controller
             $steps[] = 'Connect Cloudflare in Settings > DNS & email to add the DNS records for you.';
         }
 
-        return response()->json([...$this->panel($project), 'result' => $steps]);
+        return response()->json([...$this->panel($project), 'result' => $steps, 'warnings' => $warnings]);
     }
 
     public function receiving(Request $request, Project $project): JsonResponse
