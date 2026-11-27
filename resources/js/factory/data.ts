@@ -48,7 +48,19 @@ export type Issue = {
     engine?: Provider;
     /** What the triage droid asked before the card can be built. */
     question?: string | null;
+    /** Set by the triage droid or the person; builders take the highest first. */
+    priority?: Priority;
 };
+export type Priority = 'urgent' | 'high' | 'medium' | 'low';
+export const PRIORITIES: { key: Priority; label: string; tone: string }[] = [
+    { key: 'urgent', label: 'Urgent', tone: 'border-blocked/40 text-blocked' },
+    { key: 'high', label: 'High', tone: 'border-needs/40 text-needs' },
+    { key: 'medium', label: 'Medium', tone: 'text-muted-foreground' },
+    { key: 'low', label: 'Low', tone: 'text-muted-foreground/70' },
+];
+/** Sort rank, highest priority first; an unset priority counts as medium. */
+export const priorityRank = (p?: Priority) =>
+    PRIORITIES.findIndex((x) => x.key === (p ?? 'medium'));
 /** A chat item as stored on the server; `id` is missing on items not saved yet. */
 export type ChatItem = { id?: number } & ChatItemBody;
 type ChatItemBody =

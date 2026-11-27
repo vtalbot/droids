@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     Dialog,
     DialogContent,
@@ -43,6 +43,7 @@ export type NewDroid = {
     autonomy: string;
     instructions: string;
     seed: number;
+    project?: string | null;
 };
 
 export function AssembleDialog({
@@ -52,6 +53,8 @@ export function AssembleDialog({
     nextSeed,
     nextUnit,
     defaultRole,
+    defaultPrompt,
+    project,
     store,
 }: {
     store: Store;
@@ -62,6 +65,10 @@ export function AssembleDialog({
     nextUnit: (p: Provider) => string;
     /** Ask for a droid of this role straight away, e.g. a designer. */
     defaultRole?: string;
+    /** Text to start the HR prompt with, for the person to add to. */
+    defaultPrompt?: string;
+    /** The project the assembled droid joins. */
+    project?: string | null;
 }) {
     const save = useSave();
     const [picked, setPicked] = useState<Candidate | null>(null);
@@ -69,6 +76,10 @@ export function AssembleDialog({
     const [text, setText] = useState('');
     const [sending, setSending] = useState(false);
     const [busy, setBusy] = useState(false);
+    const promptRef = useRef<HTMLTextAreaElement>(null);
+    const joins = project
+        ? store.projects.find((p) => p.id === project)
+        : undefined;
 
     const ask = store.asks?.recruit;
     const chat = store.chats.recruit ?? [];
@@ -131,10 +142,19 @@ export function AssembleDialog({
         setPicked(null);
         setSeed(nextSeed);
         setText(
-            defaultRole && defaultRole !== 'Builder'
-                ? `I need a ${defaultRole.toLowerCase()} droid.`
-                : '',
+            defaultPrompt ??
+                (defaultRole && defaultRole !== 'Builder'
+                    ? `I need a ${defaultRole.toLowerCase()} droid.`
+                    : ''),
         );
+        // Put the cursor after the prompt so the person can add to it.
+        if (defaultPrompt)
+            setTimeout(() => {
+                const el = promptRef.current;
+                if (!el) return;
+                el.focus();
+                el.setSelectionRange(el.value.length, el.value.length);
+            }, 50);
     }, [open]); // eslint-disable-line
 
     const assemble = async () => {
@@ -148,6 +168,7 @@ export function AssembleDialog({
             autonomy: 'pr',
             instructions: picked.instructions,
             seed,
+            project: project ?? null,
         });
         setBusy(false);
         if (ok) onOpenChange(false);
@@ -160,8 +181,11 @@ export function AssembleDialog({
                     <DialogTitle>Assemble a droid</DialogTitle>
                     <DialogDescription>
                         {hr
-                            ? `Tell ${hr.unit} ${hr.name} what you need and pick from the candidates. Droids join a project when you give them a task.`
-                            : 'Describe the droid you need and an HR droid proposes candidates, or pick a starter. Droids join a project when you give them a task.'}
+                            ? `Tell ${hr.unit} ${hr.name} what you need and pick from the candidates.`
+                            : 'Describe the droid you need and an HR droid proposes candidates, or pick a starter.'}{' '}
+                        {joins
+                            ? `The droid you assemble joins ${joins.name}.`
+                            : 'Droids join a project when you give them a task.'}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -269,6 +293,7 @@ export function AssembleDialog({
                 <PromptInput onSubmit={(m) => void request(m.text)}>
                     <PromptInputBody>
                         <PromptInputTextarea
+                            ref={promptRef}
                             value={text}
                             onChange={(e) => setText(e.target.value)}
                             placeholder="Describe the droid you need, e.g. a reviewer who knows Laravel security…"

@@ -44,6 +44,13 @@ import {
     CardHeader,
 } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
@@ -78,6 +85,8 @@ import { GithubMark } from '@/factory/logos';
 export { GithubMark };
 import {
     COLS,
+    PRIORITIES,
+    priorityRank,
     PROVIDERS,
     STATUS,
     type Ask,
@@ -90,6 +99,7 @@ import {
     type Issue,
     type Milestone,
     type PR,
+    type Priority,
     type Project,
     type Provider,
     type Stats,
@@ -196,12 +206,13 @@ export default function FactoryApp({
     const store = useRef<Store>(structuredClone(initialStore)).current;
     const [, bump] = useReducer((x: number) => x + 1, 0);
     const [view, setView] = useState<View>(initialView);
-    const [project, setProjectState] = useState<string>(
-        initialProject === 'all' ||
-            store.projects.some((p) => p.id === initialProject)
-            ? initialProject
-            : 'all',
-    );
+    // Each page keeps its own project filter; the sidebar only opens projects.
+    const valid = (p: string) =>
+        p === 'all' || store.projects.some((x) => x.id === p) ? p : 'all';
+    const [filters, setFilters] = useState<Partial<Record<View, string>>>({
+        [initialView]: valid(initialProject),
+    });
+    const project = filters[view] ?? 'all';
     const [filter, setFilter] = useState<'all' | Provider>('all');
     const [chat, setChat] = useState<ChatTarget>(null);
     const [taskKey, setTaskKey] = useState<string | null>(null);
@@ -227,8 +238,13 @@ export default function FactoryApp({
     };
     const [assembleOpen, setAssembleOpen] = useState(false);
     const [assembleRole, setAssembleRole] = useState('Builder');
-    const assemble = (role = 'Builder') => {
+    const [assembleFor, setAssembleFor] = useState<{
+        prompt?: string;
+        project?: string;
+    }>({});
+    const assemble = (role = 'Builder', prompt?: string, project?: string) => {
         setAssembleRole(role);
+        setAssembleFor({ prompt, project });
         setAssembleOpen(true);
     };
     const designWith = (pid: string) => {
@@ -269,23 +285,29 @@ export default function FactoryApp({
 
     // Views switch on the client so in-progress edits survive; the URL stays shareable.
     const push = (v: View, p: string) => {
-        const url = `/${v}${p === 'all' ? '' : `?project=${encodeURIComponent(p)}`}`;
+        const q = new URLSearchParams();
+        if (p !== 'all') q.set('project', p);
+        // Staying on the same page keeps its open tab.
+        const tab = new URLSearchParams(location.search).get('tab');
+        if (v === view && tab) q.set('tab', tab);
+        const url = `/${v}${q.size ? `?${q}` : ''}`;
         if (url !== location.pathname + location.search)
             history.pushState(history.state, '', url);
     };
     const go = (v: View) => {
         setView(v);
-        push(v, project);
+        push(v, filters[v] ?? 'all');
     };
     const setProject = (p: string, v: View = view) => {
-        setProjectState(p);
+        setFilters((f) => ({ ...f, [v]: p }));
+        setView(v);
         push(v, p);
     };
     useEffect(() => {
         const f = () => {
             const u = readUrl();
             setView(u.view);
-            setProjectState(u.project);
+            setFilters((x) => ({ ...x, [u.view]: u.project }));
         };
         addEventListener('popstate', f);
         return () => removeEventListener('popstate', f);
@@ -505,9 +527,14 @@ export default function FactoryApp({
                                 <SidebarMenu className="gap-1">
                                     <SidebarMenuItem>
                                         <SidebarMenuButton
-                                            isActive={project === 'all'}
+                                            isActive={
+                                                view === 'projects' &&
+                                                project === 'all'
+                                            }
                                             tooltip="All projects"
-                                            onClick={() => setProject('all')}
+                                            onClick={() =>
+                                                setProject('all', 'projects')
+                                            }
                                         >
                                             <LayoutGridIcon />
                                             All projects
@@ -533,18 +560,17 @@ export default function FactoryApp({
                                         return (
                                             <SidebarMenuItem key={p.id}>
                                                 <SidebarMenuButton
-                                                    isActive={project === p.id}
+                                                    isActive={
+                                                        view === 'projects' &&
+                                                        project === p.id
+                                                    }
                                                     tooltip={`${p.name} · ${pct}%`}
-                                                    onClick={() => {
-                                                        const v =
-                                                            view === 'hangar' ||
-                                                            view ===
-                                                                'subscriptions'
-                                                                ? 'projects'
-                                                                : view;
-                                                        setView(v);
-                                                        setProject(p.id, v);
-                                                    }}
+                                                    onClick={() =>
+                                                        setProject(
+                                                            p.id,
+                                                            'projects',
+                                                        )
+                                                    }
                                                     className="h-auto flex-col items-stretch gap-1.5 py-2 group-data-[collapsible=icon]:!h-8 group-data-[collapsible=icon]:!p-2"
                                                 >
                                                     <div className="flex items-center gap-2">
@@ -694,11 +720,17 @@ export default function FactoryApp({
                             <span className="text-muted-foreground max-sm:hidden">
                                 /
                             </span>
-                            <span className="truncate font-medium">
-                                {project === 'all'
-                                    ? 'All projects'
-                                    : proj(project).name}
-                            </span>
+                            {view === 'subscriptions' ? (
+                                <span className="truncate font-medium">
+                                    All projects
+                                </span>
+                            ) : (
+                                <ProjectFilter
+                                    store={store}
+                                    value={project}
+                                    onChange={(p) => setProject(p)}
+                                />
+                            )}
                         </div>
                         <div className="ml-auto flex items-center gap-2">
                             {project !== 'all' && proj(project).linked && (
@@ -769,6 +801,7 @@ export default function FactoryApp({
                                 designWith={designWith}
                                 discuss={discuss}
                                 openChat={openChat}
+                                askHr={assemble}
                             />
                         )}
                         {view === 'board' && <Board {...ctx} />}
@@ -831,6 +864,8 @@ export default function FactoryApp({
                 <AssembleDialog
                     store={store}
                     defaultRole={assembleRole}
+                    defaultPrompt={assembleFor.prompt}
+                    project={assembleFor.project}
                     open={assembleOpen}
                     onOpenChange={setAssembleOpen}
                     onCreate={async (d) => {
@@ -863,7 +898,6 @@ export default function FactoryApp({
                             installation,
                         });
                         if (!res) return false;
-                        setView('board');
                         setProject(res.project as string, 'board');
                         if (res.warning) toast.warning(res.warning as string);
                         else
@@ -877,6 +911,57 @@ export default function FactoryApp({
                 />
             </SidebarProvider>
         </SaveContext.Provider>
+    );
+}
+
+function PriorityBadge({ priority }: { priority: Priority }) {
+    const p = PRIORITIES.find((x) => x.key === priority)!;
+    return (
+        <Badge
+            variant="outline"
+            title={`${p.label} priority`}
+            className={cn(
+                'rounded-full px-1.5 py-0 text-[11px] font-normal',
+                p.tone,
+            )}
+        >
+            {p.label}
+        </Badge>
+    );
+}
+
+// The project filter of the current page, shown in the header breadcrumb.
+function ProjectFilter({
+    store,
+    value,
+    onChange,
+}: {
+    store: Store;
+    value: string;
+    onChange: (p: string) => void;
+}) {
+    return (
+        <Select value={value} onValueChange={onChange}>
+            <SelectTrigger
+                size="sm"
+                aria-label="Filter by project"
+                className="h-7 max-w-56 gap-1.5 border-none px-2 font-medium shadow-none"
+            >
+                <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+                <SelectItem value="all">All projects</SelectItem>
+                {store.projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                        <span
+                            className="size-2.5 shrink-0 rounded-[3px]"
+                            style={{ background: p.color }}
+                        />
+                        {p.name}
+                    </SelectItem>
+                ))}
+            </SelectContent>
+        </Select>
     );
 }
 
@@ -1514,6 +1599,13 @@ function Board({
             <div className="grid [grid-template-columns:repeat(5,minmax(200px,1fr))] gap-3 overflow-x-auto p-4 md:p-6">
                 {COLS.map((c) => {
                     const items = list.filter((i) => i.col === c.key);
+                    // Builders take Ready cards highest priority first.
+                    if (c.key === 'ready')
+                        items.sort(
+                            (a, b) =>
+                                priorityRank(a.priority) -
+                                priorityRank(b.priority),
+                        );
                     return (
                         <section
                             key={c.key}
@@ -1588,6 +1680,12 @@ function Board({
                                             <span className="font-mono">
                                                 #{i.n}
                                             </span>
+                                            {i.priority &&
+                                                i.priority !== 'medium' && (
+                                                    <PriorityBadge
+                                                        priority={i.priority}
+                                                    />
+                                                )}
                                             <span className="ml-auto flex gap-1">
                                                 {i.labels.map((l) => (
                                                     <Badge

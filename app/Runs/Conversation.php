@@ -312,7 +312,7 @@ class Conversation
                 : '{"message": "...", "reasoning": "..."}',
             'propose' => '{"message": "...", "reasoning": "...", "proposals": [{"kind": "feature" or "milestone", "title": "...", "why": "...", "effort": "...", "engine": "claude" or "codex"}], "next": ["..."]}',
             'reflect' => '{"message": "...", "reasoning": "...", "good": ["..."], "improve": ["..."], "rules": ["..."]}',
-            'triage' => '{"message": "...", "reasoning": "...", "ready": [{"number": 12, "criteria": "- ...\\n- ..."}], "questions": [{"number": 13, "question": "..."}]}',
+            'triage' => '{"message": "...", "reasoning": "...", "ready": [{"number": 12, "priority": "high", "criteria": "- ...\\n- ..."}], "questions": [{"number": 13, "priority": "medium", "question": "..."}]}',
             'recruit' => '{"message": "...", "reasoning": "...", "candidates": [{"name": "...", "role": "...", "provider": "claude" or "codex", "model": "...", "pitch": "...", "why": "...", "instructions": "..."}]}',
             default => '{"message": "...", "reasoning": "..."}',
         };
@@ -645,7 +645,7 @@ class Conversation
         return $project->tasks()->where('column', 'backlog')->whereNull('builder_id')
             ->where(fn ($q) => $q->whereNull('triaged_at')
                 ->orWhere(fn ($q) => $q->whereNotNull('question')->where('triaged_at', '<', $answered ?? '1970-01-01')))
-            ->orderBy('position')->limit(self::TRIAGE_BATCH)->get();
+            ->orderByRaw(Task::BY_PRIORITY)->orderBy('position')->limit(self::TRIAGE_BATCH)->get();
     }
 
     /** @return list<string> */
@@ -657,7 +657,7 @@ class Conversation
         $cards = [];
         foreach (self::triageCandidates($project) as $t) {
             $body = $project->isLinked() ? rescue(fn () => $this->github->issueBody($project, $t->number), '', false) : '';
-            $cards = [...$cards, '', "#{$t->number} {$t->title}".($t->labels ? ' ['.implode(', ', $t->labels).']' : ''),
+            $cards = [...$cards, '', "#{$t->number} {$t->title}".($t->labels ? ' ['.implode(', ', $t->labels).']' : '').($t->priority ? " (priority set by the person: {$t->priorityName()})" : ''),
                 $body !== '' ? Str::limit($body, 3000) : '(no description)'];
             if ($t->question) {
                 $cards[] = "You asked earlier: {$t->question}";
@@ -674,6 +674,7 @@ class Conversation
             'For each card, read the code it touches, then decide:',
             '- Ready: a builder could finish it in under a day without guessing. Put it in "ready" with acceptance criteria as a short Markdown list, which is added to the issue.',
             '- Not ready: something only the person can decide is missing (scope, behaviour, a choice between options). Put one short, specific question in "questions". Do not ask what you can find in the code.',
+            'Give every card a "priority": urgent (broken in production or blocking other work), high (on the active milestone\'s critical path), medium (planned work), or low (nice to have). Builders take the highest priority first. Keep a priority the person set unless the discussion changes it.',
             'A card you asked about before is ready once the conversation answers it.',
             'In "message", tell the person in a few sentences which cards you moved and what you need from them, by issue number. They answer in this discussion.',
         ];
@@ -692,18 +693,28 @@ class Conversation
             if ($criteria !== '' && $project->isLinked()) {
                 rescue(fn () => $this->github->appendToIssue($project, $task->number, "## Acceptance criteria\n\n{$criteria}"), null, false);
             }
-            $task->update(['column' => 'ready', 'triaged_at' => now(), 'question' => null, 'position' => (int) $project->tasks()->where('column', 'ready')->max('position') + 1]);
+            $task->update(['column' => 'ready', 'triaged_at' => now(), 'question' => null, 'priority' => $this->priorityFor($task, $r), 'position' => (int) $project->tasks()->where('column', 'ready')->max('position') + 1]);
         }
         foreach (is_array($data['questions'] ?? null) ? $data['questions'] : [] as $q) {
             $task = is_array($q) && is_numeric($q['number'] ?? null) ? $candidates->pull((int) $q['number']) : null;
             if ($task && is_string($q['question'] ?? null) && trim($q['question']) !== '') {
-                $task->update(['triaged_at' => now(), 'question' => Str::limit(trim($q['question']), 500)]);
+                $task->update(['triaged_at' => now(), 'question' => Str::limit(trim($q['question']), 500), 'priority' => $this->priorityFor($task, $q)]);
             }
         }
         // Cards the droid passed over are looked at again only when they change.
         foreach ($candidates as $task) {
             $task->update(['triaged_at' => now()]);
         }
+    }
+
+    /**
+     * The priority the triage droid gave a card, else the one it had.
+     *
+     * @param  array<mixed>  $item
+     */
+    private function priorityFor(Task $task, array $item): ?int
+    {
+        return Task::priorityValue($item['priority'] ?? null) ?? $task->priority;
     }
 
     /** @return list<string> */

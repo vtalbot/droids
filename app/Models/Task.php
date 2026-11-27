@@ -24,16 +24,35 @@ use Illuminate\Support\Carbon;
  * @property string|null $url
  * @property Carbon|null $triaged_at
  * @property string|null $question what the triage droid asked before the card can be built
+ * @property int|null $priority 1 urgent to 4 low, see PRIORITIES
  */
 class Task extends Model
 {
     public const COLUMNS = ['backlog', 'ready', 'progress', 'review', 'done'];
 
+    /** Priority names by stored value; an unset priority counts as medium. */
+    public const PRIORITIES = [1 => 'urgent', 2 => 'high', 3 => 'medium', 4 => 'low'];
+
+    /** SQL that orders tasks highest priority first. */
+    public const BY_PRIORITY = 'coalesce(priority, 3)';
+
+    public function priorityName(): ?string
+    {
+        return $this->priority ? self::PRIORITIES[$this->priority] ?? null : null;
+    }
+
+    public static function priorityValue(mixed $name): ?int
+    {
+        $v = array_search(is_string($name) ? strtolower(trim($name)) : $name, self::PRIORITIES, true);
+
+        return $v === false ? null : $v;
+    }
+
     protected $guarded = [];
 
     protected function casts(): array
     {
-        return ['labels' => 'array', 'triaged_at' => 'datetime'];
+        return ['labels' => 'array', 'triaged_at' => 'datetime', 'priority' => 'integer'];
     }
 
     /** @return BelongsTo<Project, $this> */

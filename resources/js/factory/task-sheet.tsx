@@ -33,10 +33,12 @@ import {
 } from '@/components/ui/select';
 import {
     COLS,
+    PRIORITIES,
     PROVIDERS,
     type CheckState,
     type ColKey,
     type PR,
+    type Priority,
 } from '@/factory/data';
 import { DroidAvatar } from '@/factory/droid-avatar';
 import { EngineLogo } from '@/factory/logos';
@@ -191,6 +193,16 @@ export function TaskSheet({
                 ),
         );
     };
+    const prioritize = (priority: Priority | null) => {
+        if (!i) return;
+        i.priority = priority ?? undefined;
+        bump();
+        void save(
+            'PATCH',
+            `/factory/projects/${encodeURIComponent(i.project)}/tasks/${i.n}`,
+            { priority },
+        );
+    };
     const pullUrl = (action: string) =>
         `/factory/projects/${encodeURIComponent(pid)}/pulls/${pr?.n}/${action}`;
     const rerun = () => {
@@ -310,6 +322,39 @@ export function TaskSheet({
                                                 value={c.key}
                                             >
                                                 {c.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <span className="text-muted-foreground">
+                                    Priority
+                                </span>
+                                <Select
+                                    value={i.priority ?? 'unset'}
+                                    onValueChange={(v) =>
+                                        prioritize(
+                                            v === 'unset'
+                                                ? null
+                                                : (v as Priority),
+                                        )
+                                    }
+                                >
+                                    <SelectTrigger
+                                        className="h-8 w-44"
+                                        aria-label="Priority"
+                                    >
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="unset">
+                                            Not set
+                                        </SelectItem>
+                                        {PRIORITIES.map((x) => (
+                                            <SelectItem
+                                                key={x.key}
+                                                value={x.key}
+                                            >
+                                                {x.label}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>

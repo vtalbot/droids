@@ -1,5 +1,12 @@
 import { useState } from 'react';
-import { PlusIcon, UsersIcon, XIcon } from 'lucide-react';
+import {
+    CheckIcon,
+    PlusIcon,
+    SearchCheckIcon,
+    SparklesIcon,
+    UsersIcon,
+    XIcon,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,7 +27,7 @@ import {
 } from '@/components/ui/select';
 import { useSave } from '@/factory/api';
 import type { Store } from '@/factory/app';
-import { STATUS, type Droid } from '@/factory/data';
+import { PROVIDERS, STATUS, type Droid } from '@/factory/data';
 import { DroidAvatar } from '@/factory/droid-avatar';
 import { cn } from '@/lib/utils';
 
@@ -88,18 +95,75 @@ export function DroidProjectSelect({ store, d }: { store: Store; d: Droid }) {
     );
 }
 
+/** Ask HR for a droid of a role, with a prompt the person can add to. */
+export type AskHr = (role: string, prompt: string, project: string) => void;
+
+type Need = { role: string; duty: string; droids: Droid[] };
+
+/** The roles a project's crew needs, with the crew droids that fill each. */
+export function crewNeeds(store: Store, pid: string): Need[] {
+    const crew = store.droids.filter((d) => d.project === pid);
+    const roles: [string, string][] = [
+        [
+            'Planner',
+            "it plans tasks with me, triages the Ideas column and sets each card's priority",
+        ],
+        [
+            'Builder',
+            'it takes cards from Ready for droids, highest priority first, and opens a pull request for each',
+        ],
+        [
+            'Reviewer',
+            "it reviews the builders' pull requests and asks for fixes before they merge",
+        ],
+    ];
+    if (store.design?.[pid]?.length)
+        roles.push([
+            'Designer',
+            'it keeps the design files up to date as the project changes',
+        ]);
+    return roles.map(([role, duty]) => ({
+        role,
+        duty,
+        droids: crew.filter((d) => d.role === role),
+    }));
+}
+
+/** The prompt for HR about a missing droid, for the person to add to. */
+export function hrPrompt(store: Store, pid: string, need: Need): string {
+    const p = store.projects.find((x) => x.id === pid);
+    const where = p ? ` for ${p.name} (${p.repo})` : '';
+    let text = `I need a ${need.role.toLowerCase()} droid${where}: ${need.duty}.`;
+    if (need.role === 'Reviewer') {
+        const engines = new Set(
+            store.droids
+                .filter((d) => d.project === pid && d.role === 'Builder')
+                .map((d) => d.provider),
+        );
+        if (engines.size === 1) {
+            const [e] = [...engines];
+            const other = e === 'claude' ? 'codex' : 'claude';
+            text += ` The builders run on ${PROVIDERS[e].label}, so a ${PROVIDERS[other].label} reviewer would give a second opinion.`;
+        }
+    }
+    return `${text} `;
+}
+
 /** The droids on a project, with a picker to bring in more. */
 export function CrewCard({
     store,
     pid,
     openChat,
+    askHr,
 }: {
     store: Store;
     pid: string;
     openChat?: (id: string) => void;
+    askHr?: AskHr;
 }) {
     const move = useMoveDroid(store);
     const [busy, setBusy] = useState('');
+    const [checking, setChecking] = useState(false);
     const crew = store.droids.filter((d) => d.project === pid);
     const others = store.droids.filter((d) => d.project !== pid);
     const run = async (d: Droid, project: string | null) => {
@@ -119,6 +183,15 @@ export function CrewCard({
                             : 'No droid on this project yet'}
                     </CardDescription>
                 </div>
+                <Button
+                    size="sm"
+                    variant="outline"
+                    aria-pressed={checking}
+                    onClick={() => setChecking((c) => !c)}
+                >
+                    <SearchCheckIcon />
+                    Find required droids
+                </Button>
                 {others.length > 0 && (
                     <Select
                         value=""
@@ -218,10 +291,104 @@ export function CrewCard({
                     ))}
                 </CardContent>
             )}
+            {checking && (
+                <CardContent className="border-t px-4 pt-3">
+                    <CrewCheck
+                        store={store}
+                        pid={pid}
+                        busy={!!busy}
+                        add={(d) => void run(d, pid)}
+                        askHr={askHr}
+                    />
+                </CardContent>
+            )}
             <CardContent className="grid gap-2 border-t px-4 pt-3">
                 <Autopilot store={store} pid={pid} crew={crew} />
             </CardContent>
         </Card>
+    );
+}
+
+/** Each role the crew needs: who fills it, or a way to get one. */
+function CrewCheck({
+    store,
+    pid,
+    busy,
+    add,
+    askHr,
+}: {
+    store: Store;
+    pid: string;
+    busy: boolean;
+    add: (d: Droid) => void;
+    askHr?: AskHr;
+}) {
+    const needs = crewNeeds(store, pid);
+    const missing = needs.filter((n) => !n.droids.length).length;
+    return (
+        <div className="grid gap-2 text-sm">
+            <p className="text-muted-foreground">
+                {missing
+                    ? `${missing} role${missing === 1 ? ' is' : 's are'} missing for droids to run this project on their own.`
+                    : 'The crew has every role it needs.'}
+            </p>
+            {needs.map((n) => {
+                // A free droid of this role can join without asking HR.
+                const free = store.droids.find(
+                    (d) => d.role === n.role && !d.project && !d.task,
+                );
+                return (
+                    <div
+                        key={n.role}
+                        className="flex flex-wrap items-center gap-2"
+                    >
+                        {n.droids.length ? (
+                            <CheckIcon className="size-4 text-working" />
+                        ) : (
+                            <XIcon className="size-4 text-needs" />
+                        )}
+                        <span className="w-20 font-medium">{n.role}</span>
+                        {n.droids.length ? (
+                            <span className="text-muted-foreground">
+                                {n.droids
+                                    .map((d) => `${d.unit} ${d.name}`)
+                                    .join(', ')}
+                            </span>
+                        ) : (
+                            <>
+                                {askHr && (
+                                    <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        onClick={() =>
+                                            askHr(
+                                                n.role,
+                                                hrPrompt(store, pid, n),
+                                                pid,
+                                            )
+                                        }
+                                    >
+                                        <SparklesIcon />
+                                        Find a {n.role.toLowerCase()}
+                                    </Button>
+                                )}
+                                {free && (
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        disabled={busy}
+                                        onClick={() => add(free)}
+                                    >
+                                        <PlusIcon />
+                                        Add {free.unit} {free.name}
+                                    </Button>
+                                )}
+                            </>
+                        )}
+                    </div>
+                );
+            })}
+        </div>
     );
 }
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CalendarClockIcon, CopyIcon, GaugeIcon, PlusIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useUrlParam } from '@/factory/url';
 import {
     Card,
     CardContent,
@@ -101,6 +102,8 @@ export function Meter({
     );
 }
 
+const SUB_TABS = ['usage', 'schedule'] as const;
+
 export function SubscriptionsView({
     store,
     bump,
@@ -110,6 +113,7 @@ export function SubscriptionsView({
     bump: () => void;
     onAdd: () => void;
 }) {
+    const [tab, setTab] = useUrlParam('tab', SUB_TABS, 'usage');
     return (
         <div>
             <div className="blueprint flex flex-wrap items-end justify-between gap-4 border-b px-4 pt-7 pb-5 md:px-6">
@@ -136,7 +140,7 @@ export function SubscriptionsView({
                     Add subscription
                 </Button>
             </div>
-            <Tabs defaultValue="usage" className="p-4 md:p-6">
+            <Tabs value={tab} onValueChange={setTab} className="p-4 md:p-6">
                 <TabsList>
                     <TabsTrigger value="usage">
                         <GaugeIcon />

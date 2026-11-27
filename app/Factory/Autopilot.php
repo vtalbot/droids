@@ -61,7 +61,7 @@ class Autopilot
         return true;
     }
 
-    /** Give Ready cards to the project's idle builders, the card's engine first. */
+    /** Give Ready cards to the project's idle builders, highest priority first, the card's engine first. */
     public function build(Project $project): int
     {
         $idle = Droid::where('project_id', $project->id)->where('role', 'Builder')->where('status', 'idle')->whereNull('task_id')->orderBy('unit')->get();
@@ -69,7 +69,8 @@ class Autopilot
             return 0;
         }
         $assigned = 0;
-        $cards = $project->tasks()->where('column', 'ready')->whereNull('builder_id')->orderBy('position')->get();
+        // Highest priority first, then the order on the board.
+        $cards = $project->tasks()->where('column', 'ready')->whereNull('builder_id')->orderByRaw(Task::BY_PRIORITY)->orderBy('position')->get();
         foreach ($cards as $task) {
             /** @var Task $task */
             $droid = $idle->first(fn (Droid $d) => $task->engine === null || $d->provider === $task->engine) ?? $idle->first();
