@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+    BrainIcon,
     CheckIcon,
     ListChecksIcon,
     MessagesSquareIcon,
@@ -165,7 +166,7 @@ export function ChatSheet({
             ? [
                   {
                       kind: 'agent',
-                      text: `Let's talk about **${proj(discussFor).name}**. I can read \`${proj(discussFor).repo}\` and its board. Ask me how it's going, about the code, or what to do next.`,
+                      text: `Let's talk about **${proj(discussFor).name}**. I can read \`${proj(discussFor).repo}\` and its board. Ask me how it's going, about the code, or what to do next. When we agree on a milestone or on issues, I'll put them below my answer for you to create in one click.`,
                   },
               ]
             : designFor
@@ -197,22 +198,26 @@ export function ChatSheet({
                   ];
     }
     const items: ChatItem[] = d ? store.chats[key] : [];
+    // The droid's latest reply, past the cards it put below it.
+    const last = items.findLast((i) => i.kind === 'user' || i.kind === 'agent');
     const sugg =
-        d && items.length === 1 && !thinking
-            ? discussFor
-                ? [
-                      `Where does ${proj(discussFor).name} stand?`,
-                      'What are the biggest risks in the code right now?',
-                  ]
-                : planFor
-                  ? [`Plan the rest of ${proj(planFor).milestone}`, PROPOSE]
-                  : designFor
-                    ? [
-                          `Create a design system for ${proj(designFor).name}`,
-                          'Design the main screens',
-                      ]
-                    : []
-            : [];
+        d && !thinking && last?.kind === 'agent' && last.next?.length
+            ? last.next
+            : d && items.length === 1 && !thinking
+              ? discussFor
+                  ? [
+                        `Where does ${proj(discussFor).name} stand?`,
+                        'What are the biggest risks in the code right now?',
+                    ]
+                  : planFor
+                    ? [`Plan the rest of ${proj(planFor).milestone}`, PROPOSE]
+                    : designFor
+                      ? [
+                            `Create a design system for ${proj(designFor).name}`,
+                            'Design the main screens',
+                        ]
+                      : []
+              : [];
     const issue =
         d && !planFor && !designFor && !discussFor
             ? store.issues.find(
@@ -532,6 +537,21 @@ function ChatRow({
                         </Reasoning>
                     )}
                     <MessageResponse>{m.text}</MessageResponse>
+                    {m.remembered && m.remembered.length > 0 && (
+                        <details className="mt-1 text-xs text-muted-foreground">
+                            <summary className="flex cursor-pointer items-center gap-1.5">
+                                <BrainIcon className="size-3.5" />
+                                Saved {m.remembered.length} note
+                                {m.remembered.length === 1 ? '' : 's'} to
+                                project memory
+                            </summary>
+                            <ul className="mt-1.5 ml-5 list-disc space-y-0.5">
+                                {m.remembered.map((r) => (
+                                    <li key={r}>{r}</li>
+                                ))}
+                            </ul>
+                        </details>
+                    )}
                 </MessageContent>
             </Message>
         );
@@ -627,7 +647,7 @@ function ChatRow({
                 </TaskContent>
             </Task>
         );
-    return <Drafts m={m} bump={bump} proj={proj} d={d} />;
+    return <Drafts m={m} store={store} bump={bump} proj={proj} d={d} />;
 }
 
 /** Save what the person did with a card, or keep it locally for demo items. */
@@ -775,11 +795,13 @@ function Retro({
 
 function Drafts({
     m,
+    store,
     bump,
     proj,
     d,
 }: {
     m: Extract<ChatItem, { kind: 'drafts' }>;
+    store: Store;
     bump: () => void;
     proj: (id: string) => Store['projects'][number];
     d: Droid;
@@ -787,6 +809,18 @@ function Drafts({
     const list = m.items ?? PLAN_DRAFTS[m.project] ?? [];
     const [on, setOn] = useState<boolean[]>(() => list.map(() => true));
     const p = proj(m.project);
+    const open = (store.roadmap[m.project] ?? []).filter(
+        (x) => x.state !== 'done',
+    );
+    // The milestone the droid named, matched by name: it may be one it proposed just above.
+    const named = list.find((t) => t.milestone)?.milestone?.toLowerCase();
+    const [picked, setPicked] = useState<string | null>(null);
+    const milestone =
+        picked ??
+        open.find((x) => x.name.toLowerCase() === named)?.id ??
+        open.find((x) => x.state === 'active')?.id ??
+        open[0]?.id ??
+        '';
     const count = on.filter(Boolean).length;
     const save = useSave();
     const mark = useMark();
@@ -804,6 +838,10 @@ function Drafts({
                         labels: t.labels,
                         engine: t.engine,
                         body: t.body,
+                        milestone: milestone
+                            ? Number(milestone.slice(1))
+                            : undefined,
+                        feature_name: milestone ? t.feature : undefined,
                     })),
             },
         );
@@ -811,9 +849,13 @@ function Drafts({
         if (!res) return;
         const made = res.numbers as number[];
         await mark(m, { created: made }, bump);
-        toast.success(`${made.length} issues added to the Backlog`, {
-            description: `${p.name} · ${d.unit} drafted them. Move them to Ready when you want droids to pick them up.`,
-        });
+        const ms = open.find((x) => x.id === milestone);
+        toast.success(
+            `${made.length} issue${made.length === 1 ? '' : 's'} added to the Backlog${ms ? ` under ${ms.name}` : ''}`,
+            {
+                description: `${p.name} · ${d.unit} drafted them. Move them to Ready when you want droids to pick them up.`,
+            },
+        );
     };
     return (
         <Card className="gap-3 py-4 shadow-none">
@@ -821,8 +863,26 @@ function Drafts({
                 <CardTitle className="text-base">
                     Draft issues for {p.name}
                 </CardTitle>
-                <CardDescription>
-                    {p.repo} · milestone {p.milestone}
+                <CardDescription className="flex flex-wrap items-center gap-1.5">
+                    {p.repo}
+                    {!m.created && ' · milestone'}
+                    {m.created ? null : open.length > 0 ? (
+                        <select
+                            aria-label="Milestone for these issues"
+                            className="rounded-md border bg-background px-1.5 py-0.5 text-xs text-foreground"
+                            value={milestone}
+                            onChange={(e) => setPicked(e.target.value)}
+                        >
+                            {open.map((x) => (
+                                <option key={x.id} value={x.id}>
+                                    {x.name}
+                                </option>
+                            ))}
+                            <option value="">No milestone</option>
+                        </select>
+                    ) : (
+                        <span>none yet</span>
+                    )}
                 </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-1 px-2">
@@ -859,6 +919,11 @@ function Drafts({
                                     </Badge>
                                 ))}
                                 <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
+                                    {t.feature && milestone && (
+                                        <span className="mr-1">
+                                            {t.feature} ·
+                                        </span>
+                                    )}
                                     <EngineLogo
                                         provider={t.engine}
                                         className="size-3.5"
@@ -919,7 +984,7 @@ function Proposals({
                 ? await save(
                       'POST',
                       `/factory/projects/${encodeURIComponent(m.project)}/milestones`,
-                      { name: pr.title, goal: pr.why },
+                      { name: pr.title, goal: pr.why, due_on: pr.due },
                   )
                 : await save(
                       'POST',
@@ -965,7 +1030,9 @@ function Proposals({
                                     className="h-7"
                                     onClick={() => add(x.title)}
                                 >
-                                    Add to roadmap
+                                    {x.kind === 'milestone'
+                                        ? 'Create milestone'
+                                        : 'Add to roadmap'}
                                 </Button>
                             )}
                         </CardHeader>

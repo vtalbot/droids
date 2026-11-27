@@ -27,6 +27,13 @@ class Conversation
     /** Builder runs a retrospective looks back over. */
     private const RETRO_RUNS = 10;
 
+    /** How actions work in a conversation: the droid proposes, the person clicks. */
+    private const ACTION_RULES = [
+        'You cannot create anything yourself: milestones and issues you put in the JSON appear under your message as cards, with buttons the person clicks to create them on the board and on GitHub. So never say you created something. Say it is ready below and that one click creates it.',
+        'A draft can name the milestone it belongs to in "milestone", either an existing one or one you propose in the same answer, and a feature of that milestone in "feature".',
+        'Put up to three short follow-ups the person is likely to want next in "next", written as what they would type, such as "Draft the issues for this milestone". Leave it empty when nothing obvious follows.',
+    ];
+
     /** The starter droids Assemble droid always offers (resources/js/factory/dialogs.tsx). */
     private const STARTER_NAMES = ['Mira', 'Bolt', 'Lumen', 'Atlas', 'Iris'];
 
@@ -78,7 +85,7 @@ class Conversation
         if (! $design) {
             $lines = [...$lines, ...$this->design->promptLines($project, 'conversation')];
         }
-        $lines = [...$lines, ...$this->memory->promptLines($project, $design)];
+        $lines = [...$lines, ...$this->memory->promptLines($this->memoryProject($run), $design)];
 
         $history = $this->history($run);
         if ($history !== []) {
@@ -91,7 +98,7 @@ class Conversation
             (string) $run->input,
             '',
             'Answer with one JSON object and nothing else: no code fence, no text around it. Its shape:',
-            $this->shape($run->kind),
+            $this->shape($run->kind, $project !== null, $this->memoryProject($run) !== null),
             'Write "message" in Markdown, in plain conversational sentences. Put what you read or checked in "reasoning", in one or two sentences.',
         ]);
     }
@@ -107,11 +114,14 @@ class Conversation
         return [
             "You are planning work for the project {$project->name} ({$project->repo}). Drafts become GitHub issues on its board.",
             ...$this->milestoneLines($milestone),
+            ...$this->openMilestones($project),
             '',
             'Open issues already on the board:',
             ...$this->taskLines($project->tasks()->where('column', '!=', 'done')->orderBy('number')->limit(60)->get()),
+            ...$this->discussionLines($project),
             '',
             'Draft issues a single droid can finish in under a day, without repeating open issues. Pick the engine for each: "codex" for scoped implementation, "claude" where the work needs design or careful review. Size is S, M or L. Give each a short body with the acceptance criteria.',
+            ...self::ACTION_RULES,
         ];
     }
 
@@ -138,8 +148,10 @@ class Conversation
             '',
             'Open issues:',
             ...$this->taskLines($project->tasks()->where('column', '!=', 'done')->orderBy('number')->limit(40)->get()),
+            ...$this->discussionLines($project),
             '',
             'Propose up to 6 features or milestones, ranked by impact, that are not already on the roadmap. Ground each "why" in something you saw in the code, the issues or the roadmap. "effort" reads like "M · 4 tasks".',
+            self::ACTION_RULES[2],
         ];
     }
 
@@ -245,12 +257,15 @@ class Conversation
         return [
             "The person wants to talk about the project {$project->name} ({$project->repo}): how it is going, the code, the plan, or what to do next.",
             ...$this->milestoneLines($milestone),
+            ...$this->openMilestones($project),
             $crew !== '' ? "Droids docked on it: {$crew}." : 'No droid is docked on it yet.',
             '',
             'Open issues on its board:',
             ...$this->taskLines($open),
             '',
-            'Answer the person directly and ground what you say in the code and the board. You cannot change the board from here: if they want something done, tell them what to click, or suggest Plan tasks to draft issues.',
+            'Answer the person directly and ground what you say in the code and the board.',
+            'When the person wants a milestone, put it in "milestones". When they want work planned, or agree to a plan you discussed, draft the issues in "drafts". Leave both empty otherwise.',
+            ...self::ACTION_RULES,
         ];
     }
 
@@ -273,15 +288,23 @@ class Conversation
         return [...$lines, 'Answer the person directly. You cannot change the board from here: if they want something done, tell them what to click or assign.'];
     }
 
-    private function shape(string $kind): string
+    private const DRAFT = '{"title": "...", "body": "...", "labels": ["..."], "engine": "claude" or "codex", "size": "S" or "M" or "L", "milestone": "..." or null, "feature": "..." or null}';
+
+    private function shape(string $kind, bool $project = false, bool $memory = false): string
     {
-        return match ($kind) {
-            'plan' => '{"message": "...", "reasoning": "...", "drafts": [{"title": "...", "body": "...", "labels": ["..."], "engine": "claude" or "codex", "size": "S" or "M" or "L"}]}',
-            'propose' => '{"message": "...", "reasoning": "...", "proposals": [{"kind": "feature" or "milestone", "title": "...", "why": "...", "effort": "...", "engine": "claude" or "codex"}]}',
+        $shape = match ($kind) {
+            'plan' => '{"message": "...", "reasoning": "...", "drafts": ['.self::DRAFT.'], "next": ["..."]}',
+            'chat' => $project
+                ? '{"message": "...", "reasoning": "...", "milestones": [{"title": "...", "goal": "...", "due": "YYYY-MM-DD" or null}], "drafts": ['.self::DRAFT.'], "next": ["..."]}'
+                : '{"message": "...", "reasoning": "..."}',
+            'propose' => '{"message": "...", "reasoning": "...", "proposals": [{"kind": "feature" or "milestone", "title": "...", "why": "...", "effort": "...", "engine": "claude" or "codex"}], "next": ["..."]}',
             'reflect' => '{"message": "...", "reasoning": "...", "good": ["..."], "improve": ["..."], "rules": ["..."]}',
             'recruit' => '{"message": "...", "reasoning": "...", "candidates": [{"name": "...", "role": "...", "provider": "claude" or "codex", "model": "...", "pitch": "...", "why": "...", "instructions": "..."}]}',
             default => '{"message": "...", "reasoning": "..."}',
         };
+
+        // Every run with a project can add to its shared memory.
+        return $memory && $kind !== 'design' ? substr($shape, 0, -1).', "remember": ["..."]}' : $shape;
     }
 
     /** @return list<string> */
@@ -326,18 +349,24 @@ class Conversation
             return;
         }
 
-        if ($run->project && $run->kind !== 'design') {
-            $this->memory->remember($run->project, $run->droid, Memory::facts($data['remember'] ?? null));
+        $remembered = [];
+        if (($memory = $this->memoryProject($run)) && $run->kind !== 'design') {
+            $remembered = $this->memory->remember($memory, $run->droid, Memory::facts($data['remember'] ?? null));
         }
+        $next = in_array($run->kind, ['chat', 'plan', 'propose'], true) ? array_map(fn (string $n) => Str::limit($n, 120, ''), $this->strings($data['next'] ?? null, 3)) : [];
         $this->say($run, 'agent', array_filter([
             'text' => Str::limit($text, 6000),
             'reasoning' => is_string($data['reasoning'] ?? null) ? Str::limit($data['reasoning'], 1000) : null,
+            'next' => $next ?: null,
+            // Shown under the reply, so the person sees what the next droid will know.
+            'remembered' => $remembered ?: null,
         ]));
 
         $slug = $run->project?->slug;
         match ($run->kind) {
             'plan' => $slug && ($items = $this->drafts($data['drafts'] ?? null)) ? $this->say($run, 'drafts', ['project' => $slug, 'items' => $items]) : null,
             'propose' => $slug && ($items = $this->proposals($data['proposals'] ?? null)) ? $this->say($run, 'proposals', ['project' => $slug, 'items' => $items]) : null,
+            'chat' => $slug ? $this->sayActions($run, $slug, $data) : null,
             'recruit' => ($items = $this->candidates($data['candidates'] ?? null)) ? $this->say($run, 'candidates', ['items' => $items]) : null,
             'reflect' => $this->say($run, 'retro', [
                 'provider' => $run->droid->provider,
@@ -349,6 +378,36 @@ class Conversation
             default => null,
         };
         $this->sayDesign($run, $design);
+    }
+
+    /**
+     * A project discussion's milestones and drafts, as cards with create buttons.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function sayActions(Run $run, string $slug, array $data): void
+    {
+        $milestones = [];
+        foreach (is_array($data['milestones'] ?? null) ? array_slice($data['milestones'], 0, 4) : [] as $m) {
+            if (! is_array($m) || ! is_string($m['title'] ?? null) || trim($m['title']) === '') {
+                continue;
+            }
+            $due = is_string($m['due'] ?? null) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $m['due']) === 1 ? $m['due'] : null;
+            $milestones[] = array_filter([
+                'kind' => 'milestone',
+                'title' => Str::limit(trim($m['title']), 120, ''),
+                'why' => is_string($m['goal'] ?? null) ? Str::limit(trim($m['goal']), 300, '') : '',
+                'effort' => $due ? 'due '.$due : '',
+                'engine' => $run->droid->provider,
+                'due' => $due,
+            ], fn ($v) => $v !== null);
+        }
+        if ($milestones) {
+            $this->say($run, 'proposals', ['project' => $slug, 'items' => $milestones]);
+        }
+        if ($items = $this->drafts($data['drafts'] ?? null)) {
+            $this->say($run, 'drafts', ['project' => $slug, 'items' => $items]);
+        }
     }
 
     /** @param array{changed: list<string>, removed: list<string>}|null $design */
@@ -388,7 +447,7 @@ class Conversation
         return is_array($data) ? $data : null;
     }
 
-    /** @return list<array{title: string, body: string, labels: list<string>, engine: string, size: string}> */
+    /** @return list<array{title: string, body: string, labels: list<string>, engine: string, size: string, milestone?: string, feature?: string}> */
     private function drafts(mixed $list): array
     {
         $out = [];
@@ -402,6 +461,10 @@ class Conversation
                 'labels' => array_map(fn (string $l) => Str::limit($l, 40, ''), $this->strings($d['labels'] ?? null, 5)),
                 'engine' => ($d['engine'] ?? '') === 'codex' ? 'codex' : 'claude',
                 'size' => in_array($d['size'] ?? '', ['S', 'M', 'L'], true) ? $d['size'] : 'M',
+                ...array_filter([
+                    'milestone' => is_string($d['milestone'] ?? null) && trim($d['milestone']) !== '' ? Str::limit(trim($d['milestone']), 120, '') : null,
+                    'feature' => is_string($d['feature'] ?? null) && trim($d['feature']) !== '' ? Str::limit(trim($d['feature']), 120, '') : null,
+                ]),
             ];
         }
 
@@ -520,6 +583,43 @@ class Conversation
             ['Failed runs', (string) $runs->where('status', 'failed')->count()],
             ['Cost per task', $tasks ? '$'.number_format($runs->sum('cost') / $tasks, 2) : '$0.00'],
         ];
+    }
+
+    /** The project whose shared memory a run reads and adds to: a droid's own chat uses the project it is on. */
+    private function memoryProject(Run $run): ?Project
+    {
+        if ($run->project) {
+            return $run->project;
+        }
+
+        return in_array($run->kind, ['chat', 'reflect'], true) ? $run->droid->project : null;
+    }
+
+    /** @return list<string> */
+    private function openMilestones(Project $project): array
+    {
+        $names = $project->milestones()->where('state', '!=', 'done')->orderBy('position')->pluck('name')->all();
+
+        return $names ? ['Open milestones: '.implode('; ', $names).'.'] : [];
+    }
+
+    /**
+     * The latest of the project's discussion, so planning picks up what was agreed there.
+     *
+     * @return list<string>
+     */
+    private function discussionLines(Project $project): array
+    {
+        $messages = ChatMessage::where('topic', "discuss:{$project->slug}")
+            ->whereIn('kind', ['user', 'agent'])
+            ->latest('id')->limit(self::HISTORY)->get()->reverse();
+
+        $lines = [];
+        foreach ($messages as $m) {
+            $lines[] = ($m->kind === 'user' ? 'Person: ' : 'Droid: ').Str::limit((string) ($m->payload['text'] ?? ''), 1500);
+        }
+
+        return $lines ? ['', 'The latest of the project discussion, which this planning follows on from:', ...$lines] : [];
     }
 
     private function activeMilestone(Project $project): ?Milestone

@@ -47,7 +47,15 @@ export type Issue = {
 export type ChatItem = { id?: number } & ChatItemBody;
 type ChatItemBody =
     | { kind: 'user'; text: string }
-    | { kind: 'agent'; text: string; reasoning?: string }
+    | {
+          kind: 'agent';
+          text: string;
+          reasoning?: string;
+          /** Follow-ups the droid expects, shown as buttons above the prompt. */
+          next?: string[];
+          /** What the droid added to the project's shared memory with this reply. */
+          remembered?: string[];
+      }
     | {
           kind: 'tool';
           name: string;
@@ -190,6 +198,10 @@ export type Subscription = {
     spend?: { used: number; cap: number };
     /** True when the subscription runs on an API key rather than a CLI login. */
     api?: boolean;
+    /** When a worker last read the plan's usage, like "4 minutes ago". */
+    usageAt?: string | null;
+    /** Tokens used through Droids this week: per day (Monday first) and in all. */
+    tokens?: { days: number[]; week: number };
     /** Workers that reported a CLI login for this subscription. */
     signedInOn?: string[];
 };
@@ -240,6 +252,9 @@ export type Draft = {
     labels: string[];
     engine: Provider;
     size: string;
+    /** Name of the milestone, and of its feature, the droid filed it under. */
+    milestone?: string;
+    feature?: string;
 };
 
 // ---------- Roadmap: milestones > features > tasks ----------
@@ -273,6 +288,8 @@ export type Proposal = {
     why: string;
     effort: string;
     engine: Provider;
+    /** Due date of a proposed milestone, YYYY-MM-DD. */
+    due?: string;
 };
 
 export type Stats = {

@@ -98,6 +98,7 @@ Each project keeps a shared memory, `.droids/memory.md`, placed in every run's c
 - The worker only receives jobs for a subscription it is signed in to (or one that uses an API key).
 - The schedule grid on the Subscriptions page decides which subscription is first choice for each hour. A paused hour holds build, fix and review runs in the queue. Questions you ask a droid (chat, planning, Assemble droid and the rest) still run on any free subscription of that engine, because you are waiting on them. When no worker can take a question, the chat says why: no subscription for the engine, every one at its limit, or the worker not signed in to one.
 - When a run hits a usage limit, that subscription is marked limited until its reset time, and the run is queued again on the next subscription for the same tool. After 3 attempts the run fails.
+- Every 5 minutes, and after each run, the worker reports how much of each login's plan is used: Claude Code through its usage endpoint, with the login's token (from `.credentials.json`, or the macOS keychain), and Codex from the rate limits in its latest session log under `sessions/`. The Subscriptions page shows it, and a window at 100% holds that subscription back until it resets.
 
 ## Settings you can change
 
