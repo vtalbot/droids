@@ -54,6 +54,8 @@ class FactoryState
                 'minutes' => $d->minutes,
                 'cost' => $d->cost,
                 'seed' => $d->seed,
+                'autonomy' => $d->autonomy,
+                'instructions' => $d->instructions,
             ])->values(),
             'issues' => $tasks->map(fn (Task $t) => array_filter([
                 'n' => $t->number,

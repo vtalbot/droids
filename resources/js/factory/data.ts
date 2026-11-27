@@ -36,6 +36,14 @@ export type Droid = {
     minutes: number;
     cost: number;
     seed: number;
+    autonomy?: Autonomy;
+    instructions?: string | null;
+};
+export type Autonomy = 'ask' | 'pr' | 'merge';
+export const AUTONOMY: Record<Autonomy, string> = {
+    ask: 'Asks before acting',
+    pr: 'Opens pull requests',
+    merge: 'Merges when checks pass',
 };
 export type Issue = {
     n: number;
@@ -117,6 +125,13 @@ type ChatItemBody =
           items: Candidate[];
       }
     | {
+          /** Values a droid suggests for a form, which the form fills itself from. */
+          kind: 'suggestion';
+          form?: string;
+          fields?: Record<string, string>;
+          text?: string;
+      }
+    | {
           kind: 'design';
           project: string;
           changed: string[];
@@ -124,7 +139,15 @@ type ChatItemBody =
       };
 /** A question a droid is answering on a worker, keyed by conversation. */
 export type Ask = {
-    kind: 'chat' | 'plan' | 'propose' | 'reflect' | 'design' | 'recruit';
+    kind:
+        | 'chat'
+        | 'plan'
+        | 'propose'
+        | 'reflect'
+        | 'design'
+        | 'recruit'
+        | 'triage'
+        | 'suggest';
     status: 'queued' | 'running';
     /** Why no worker can take it yet, when queued. */
     why?: string;
@@ -146,13 +169,63 @@ export const PROVIDERS: Record<
     },
 };
 
-export const ROLES = [
-    'Builder',
-    'Reviewer',
-    'Designer',
-    'Tester',
-    'Planner',
-    'Docs',
+/** What each role does and the model that fits it; light roles run well on small models. */
+export const ROLES: {
+    role: string;
+    does: string;
+    model: string;
+    light?: boolean;
+}[] = [
+    {
+        role: 'Builder',
+        does: 'Builds Ready cards and opens a pull request for each',
+        model: 'Sonnet 5.5, Opus 5.5 or GPT-5.1-Codex',
+    },
+    {
+        role: 'Reviewer',
+        does: 'Reviews pull requests and sends changes back to the builder',
+        model: 'Opus 5.5, on the other engine than the builder',
+    },
+    {
+        role: 'Planner',
+        does: 'Plans tasks and milestones with you in the project discussion',
+        model: 'Opus 5.5 or Sonnet 5.5',
+    },
+    {
+        role: 'Designer',
+        does: 'Keeps the design files of the project up to date',
+        model: 'Opus 5.5',
+    },
+    {
+        role: 'Tester',
+        does: 'Takes Ready cards labelled test and writes the missing tests',
+        model: 'Sonnet 5.5 or GPT-5.1-Codex-Mini',
+    },
+    {
+        role: 'Docs',
+        does: 'Takes Ready cards labelled docs and writes the documentation',
+        model: 'Haiku 5.5 or GPT-5.1-Codex-Mini',
+        light: true,
+    },
+    {
+        role: 'Triager',
+        does: 'Triages Ideas: acceptance criteria, priority and questions',
+        model: 'Haiku 5.5',
+        light: true,
+    },
+    {
+        role: 'Fixer',
+        does: 'Takes small Ready cards labelled bug or chore',
+        model: 'GPT-5.1-Codex-Mini or Haiku 5.5',
+        light: true,
+    },
+    {
+        role: 'Copywriter',
+        does: 'Suggests names, sender addresses and wording to prefill forms',
+        model: 'Haiku 5.5',
+        light: true,
+    },
+    { role: 'HR', does: 'Proposes new droids to hire', model: 'Sonnet 5.5' },
 ];
 
 export const STATUS: Record<

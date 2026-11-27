@@ -79,6 +79,7 @@ import { MemoryPanel } from '@/factory/memory';
 import { DnsPanel } from '@/factory/dns';
 import { CloudDomains, EmailPanel } from '@/factory/email';
 import { CrewCard, type AskHr } from '@/factory/crew';
+import { SuggestButton } from '@/factory/suggest';
 import { cn } from '@/lib/utils';
 import { useSave } from '@/factory/api';
 import type { Store } from '@/factory/app';
@@ -181,6 +182,13 @@ function RenameProject({ p }: { p: P }) {
                             maxLength={80}
                             autoFocus
                             onChange={(e) => setName(e.target.value)}
+                        />
+                        <SuggestButton
+                            pid={p.id}
+                            form="project"
+                            values={{ name }}
+                            onFill={(f) => f.name && setName(f.name)}
+                            className="w-fit"
                         />
                         <DialogFooter className="mt-2">
                             <Button

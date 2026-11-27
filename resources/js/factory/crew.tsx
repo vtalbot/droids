@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
     CheckIcon,
+    MinusIcon,
     PlusIcon,
     SearchCheckIcon,
     SparklesIcon,
@@ -27,7 +28,7 @@ import {
 } from '@/components/ui/select';
 import { useSave } from '@/factory/api';
 import type { Store } from '@/factory/app';
-import { PROVIDERS, STATUS, type Droid } from '@/factory/data';
+import { PROVIDERS, ROLES, STATUS, type Droid } from '@/factory/data';
 import { DroidAvatar } from '@/factory/droid-avatar';
 import { cn } from '@/lib/utils';
 
@@ -98,7 +99,13 @@ export function DroidProjectSelect({ store, d }: { store: Store; d: Droid }) {
 /** Ask HR for a droid of a role, with a prompt the person can add to. */
 export type AskHr = (role: string, prompt: string, project: string) => void;
 
-type Need = { role: string; duty: string; droids: Droid[] };
+type Need = {
+    role: string;
+    duty: string;
+    droids: Droid[];
+    /** Helps, on a small model, but the crew runs without it. */
+    optional?: boolean;
+};
 
 /** The roles a project's crew needs, with the crew droids that fill each. */
 export function crewNeeds(store: Store, pid: string): Need[] {
@@ -122,11 +129,24 @@ export function crewNeeds(store: Store, pid: string): Need[] {
             'Designer',
             'it keeps the design files up to date as the project changes',
         ]);
-    return roles.map(([role, duty]) => ({
-        role,
-        duty,
-        droids: crew.filter((d) => d.role === role),
-    }));
+    const light: [string, string][] = [
+        [
+            'Triager',
+            'it triages the Ideas column, writes acceptance criteria and sets priorities, so the planner can focus on planning',
+        ],
+        [
+            'Fixer',
+            'it takes small Ready cards labelled bug or chore, so builders keep the bigger work',
+        ],
+        [
+            'Copywriter',
+            'it suggests names, sender addresses and wording when I ask it to prefill a form',
+        ],
+    ];
+    return [
+        ...roles.map(([role, duty]) => ({ role, duty, optional: false })),
+        ...light.map(([role, duty]) => ({ role, duty, optional: true })),
+    ].map((n) => ({ ...n, droids: crew.filter((d) => d.role === n.role) }));
 }
 
 /** The prompt for HR about a missing droid, for the person to add to. */
@@ -134,6 +154,8 @@ export function hrPrompt(store: Store, pid: string, need: Need): string {
     const p = store.projects.find((x) => x.id === pid);
     const where = p ? ` for ${p.name} (${p.repo})` : '';
     let text = `I need a ${need.role.toLowerCase()} droid${where}: ${need.duty}.`;
+    const fits = ROLES.find((r) => r.role === need.role);
+    if (fits?.light) text += ` It should run on a small model (${fits.model}).`;
     if (need.role === 'Reviewer') {
         const engines = new Set(
             store.droids
@@ -324,7 +346,7 @@ function CrewCheck({
     askHr?: AskHr;
 }) {
     const needs = crewNeeds(store, pid);
-    const missing = needs.filter((n) => !n.droids.length).length;
+    const missing = needs.filter((n) => !n.optional && !n.droids.length).length;
     return (
         <div className="grid gap-2 text-sm">
             <p className="text-muted-foreground">
@@ -344,10 +366,17 @@ function CrewCheck({
                     >
                         {n.droids.length ? (
                             <CheckIcon className="size-4 text-working" />
+                        ) : n.optional ? (
+                            <MinusIcon className="size-4 text-muted-foreground" />
                         ) : (
                             <XIcon className="size-4 text-needs" />
                         )}
-                        <span className="w-20 font-medium">{n.role}</span>
+                        <span className="w-24 font-medium">{n.role}</span>
+                        {n.optional && !n.droids.length && (
+                            <span className="text-xs text-muted-foreground">
+                                Optional, small model
+                            </span>
+                        )}
                         {n.droids.length ? (
                             <span className="text-muted-foreground">
                                 {n.droids

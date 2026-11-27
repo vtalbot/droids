@@ -650,6 +650,7 @@ function ChatRow({
                 </TaskContent>
             </Task>
         );
+    if (m.kind === 'suggestion') return null;
     return <Drafts m={m} store={store} bump={bump} proj={proj} d={d} />;
 }
 

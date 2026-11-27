@@ -17,8 +17,8 @@ class ChatController extends Controller
     public function ask(Request $request, Droid $droid, RunQueue $queue): JsonResponse
     {
         $data = $request->validate([
-            // Triage is started by the autopilot, not asked for.
-            'kind' => ['required', Rule::in(array_diff(Run::ASK_KINDS, ['triage']))],
+            // Triage is started by the autopilot and suggestions by a form, not asked for here.
+            'kind' => ['required', Rule::in(array_diff(Run::ASK_KINDS, ['triage', 'suggest']))],
             'project' => ['nullable', 'string', Rule::requiredIf(in_array($request->input('kind'), ['plan', 'propose', 'design'], true))],
             'text' => ['required', 'string', 'max:8000'],
             'intro' => ['nullable', 'string', 'max:4000'],

@@ -39,6 +39,21 @@ class Conversation
     /** The starter droids Assemble droid always offers (resources/js/factory/dialogs.tsx). */
     private const STARTER_NAMES = ['Mira', 'Bolt', 'Lumen', 'Atlas', 'Iris'];
 
+    /**
+     * Forms a droid can fill in: each field it suggests, with what it means.
+     *
+     * @var array<string, array{title: string, fields: array<string, string>}>
+     */
+    public const SUGGEST_FORMS = [
+        'email' => ['title' => 'the email set-up of the project', 'fields' => [
+            'from_local' => 'the part of the sender address before the @: short, lowercase, letters, digits, dots or dashes (like hello, team or notifications)',
+            'from_name' => 'the sender name people see in their inbox, usually the product name, maybe with a team word',
+        ]],
+        'project' => ['title' => 'the name of the project', 'fields' => [
+            'name' => 'a short, memorable product name for the project, at most 40 characters',
+        ]],
+    ];
+
     /** Ideas cards one triage run looks at. */
     public const TRIAGE_BATCH = 10;
 
@@ -64,7 +79,7 @@ class Conversation
             return 'discuss:'.substr($topic, 7);
         }
 
-        return preg_match('/^(plan|design|discuss):|^recruit$/', $topic) === 1 ? $topic : null;
+        return preg_match('/^(plan|design|discuss|suggest):|^recruit$/', $topic) === 1 ? $topic : null;
     }
 
     public function prompt(Run $run): string
@@ -92,6 +107,7 @@ class Conversation
             'design' => $this->designContext($project),
             'recruit' => $this->recruitContext($run),
             'triage' => $this->triageContext($project),
+            'suggest' => $this->suggestContext($run),
             default => $project ? $this->discussContext($project) : $this->chatContext($droid),
         }];
         if (! $design) {
@@ -110,7 +126,7 @@ class Conversation
             (string) $run->input,
             '',
             'Answer with one JSON object and nothing else: no code fence, no text around it. Its shape:',
-            $this->shape($run->kind, $project !== null, $this->memoryProject($run) !== null),
+            $run->kind === 'suggest' ? $this->suggestShape($run) : $this->shape($run->kind, $project !== null, $this->memoryProject($run) !== null),
             'Write "message" in Markdown, in plain conversational sentences. Put what you read or checked in "reasoning", in one or two sentences.',
         ]);
     }
@@ -210,6 +226,10 @@ class Conversation
         }
         $proposed = collect($this->takenNames())->unique(fn (string $n) => mb_strtolower($n))->implode(', ');
         $models = collect(DroidController::MODELS)->map(fn (array $m, string $p) => "{$p}: ".implode(', ', $m))->implode('; ');
+        $roles = [];
+        foreach (DroidController::ROLE_GUIDE as $role => [$does, $fits]) {
+            $roles[] = "  - {$role}: {$does} ({$fits})";
+        }
 
         return [
             'You are the HR droid of this factory: you propose new droids for the person to hire. Droids are not tied to a project when hired; they are given tasks on any project later.',
@@ -223,8 +243,9 @@ class Conversation
             '',
             'Propose 4 candidate droids that answer the person\'s request. With no specific request, fill the gaps in the crew for the projects above.',
             '- "name": a short, friendly one-word droid name that is not taken.',
-            '- "role": one of '.implode(', ', DroidController::ROLES).'.',
-            "- \"provider\" and \"model\": pick from {$models}. Claude fits design, review and careful work; Codex fits scoped implementation.",
+            '- "role": one of these, with what it does and the models that fit it:',
+            ...$roles,
+            "- \"provider\" and \"model\": pick from {$models}. Claude fits design, review and careful work; Codex fits scoped implementation. Pick the smallest model that does the role well: light roles (Triager, Fixer, Docs, Copywriter) run well on Haiku 5.5 or GPT-5.1-Codex-Mini, which keeps the big models free for building and review.",
             '- "pitch": two sentences in the droid\'s own voice, introducing itself and what it is good at.',
             '- "why": one sentence on why the person needs it, grounded in their request, the crew or the projects.',
             '- "instructions": standing instructions for the droid, three or four short rules.',
@@ -353,6 +374,11 @@ class Conversation
     {
         $run->loadMissing(['droid', 'project']);
         $data = $this->decode((string) $run->summary);
+        if ($run->kind === 'suggest') {
+            $this->suggested($run, is_array($data) ? $data : []);
+
+            return;
+        }
         $text = is_array($data) && is_string($data['message'] ?? null) ? $data['message'] : null;
 
         if (! is_array($data) || $text === null) {
@@ -715,6 +741,74 @@ class Conversation
     private function priorityFor(Task $task, array $item): ?int
     {
         return Task::priorityValue($item['priority'] ?? null) ?? $task->priority;
+    }
+
+    /** The form a suggest run fills, from its topic "suggest:{project}:{form}". */
+    private static function suggestForm(Run $run): ?string
+    {
+        $form = Str::afterLast((string) $run->topic, ':');
+
+        return isset(self::SUGGEST_FORMS[$form]) ? $form : null;
+    }
+
+    /** @return list<string> */
+    private function suggestContext(Run $run): array
+    {
+        $form = self::suggestForm($run);
+        $project = $run->project;
+        if (! $form || ! $project) {
+            return ['You are filling in a form, but it is not known which one.'];
+        }
+        $fields = [];
+        foreach (self::SUGGEST_FORMS[$form]['fields'] as $key => $meaning) {
+            $fields[] = "- \"{$key}\": {$meaning}";
+        }
+
+        $title = self::SUGGEST_FORMS[$form]['title'];
+
+        return [
+            "You are a creative droid prefilling {$title} for {$project->name} ({$project->repo})".($project->domain ? ", whose domain is {$project->domain}" : '').'. The person reviews and edits what you suggest before saving it.',
+            'Learn what the product is from the code, its README and the context below, then suggest values that fit its voice. Prefer short, plain, friendly choices.',
+            '',
+            'The fields:',
+            ...$fields,
+        ];
+    }
+
+    private function suggestShape(Run $run): string
+    {
+        $form = self::suggestForm($run);
+        $fields = implode(', ', array_map(fn (string $k) => "\"{$k}\": \"...\"", array_keys($form ? self::SUGGEST_FORMS[$form]['fields'] : [])));
+
+        return '{"message": "...", "reasoning": "...", "fields": {'.$fields.'}}';
+    }
+
+    /**
+     * Keep the fields the form has, as a suggestion item the form fills itself from.
+     *
+     * @param  array<mixed>  $data
+     */
+    private function suggested(Run $run, array $data): void
+    {
+        $form = self::suggestForm($run);
+        $fields = [];
+        foreach ($form ? array_keys(self::SUGGEST_FORMS[$form]['fields']) : [] as $key) {
+            $v = $data['fields'][$key] ?? null;
+            if (is_string($v) && trim($v) !== '') {
+                $fields[$key] = Str::limit(trim($v), 200, '');
+            }
+        }
+        if (isset($fields['from_local'])) {
+            // Only the part before the @, in the characters an address allows.
+            $local = preg_replace('/[^a-z0-9._+-]/', '', strtolower(Str::before($fields['from_local'], '@')));
+            $fields['from_local'] = $local ?: null;
+            $fields = array_filter($fields);
+        }
+        $this->say($run, 'suggestion', array_filter([
+            'form' => $form,
+            'fields' => $fields,
+            'text' => $fields ? (is_string($data['message'] ?? null) ? Str::limit($data['message'], 600) : null) : 'I could not come up with a suggestion. Try again.',
+        ]));
     }
 
     /** @return list<string> */

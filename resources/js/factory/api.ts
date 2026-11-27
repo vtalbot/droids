@@ -65,4 +65,7 @@ export function applyServerStore(target: Store, next: Store) {
 }
 
 export const SaveContext = createContext<Save>(async () => null);
+/** The live client store, for panels that are not handed it as a prop. */
+export const StoreContext = createContext<Store | null>(null);
+export const useStore = () => useContext(StoreContext);
 export const useSave = () => useContext(SaveContext);

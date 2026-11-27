@@ -2,11 +2,13 @@
 
 namespace App\Factory;
 
+use App\Http\Controllers\Factory\DroidController;
 use App\Models\Droid;
 use App\Models\Project;
 use App\Models\Run;
 use App\Models\Task;
 use App\Runs\Conversation;
+use Illuminate\Support\Collection;
 
 /**
  * Moves cards along on projects that turned it on: the Planner triages the
@@ -32,10 +34,10 @@ class Autopilot
         return $out;
     }
 
-    /** The droid that triages a project: its Planner, else its first droid. */
+    /** The droid that triages a project: its Triager, else its Planner, else its first droid. */
     public static function triager(Project $project): ?Droid
     {
-        return Droid::where('project_id', $project->id)->orderByRaw("role = 'Planner' desc")->orderBy('unit')->first();
+        return Droid::where('project_id', $project->id)->orderByRaw("role = 'Triager' desc")->orderByRaw("role = 'Planner' desc")->orderBy('unit')->first();
     }
 
     /** Queue a triage run when Ideas has cards to look at and none is running. */
@@ -64,7 +66,7 @@ class Autopilot
     /** Give Ready cards to the project's idle builders, highest priority first, the card's engine first. */
     public function build(Project $project): int
     {
-        $idle = Droid::where('project_id', $project->id)->where('role', 'Builder')->where('status', 'idle')->whereNull('task_id')->orderBy('unit')->get();
+        $idle = Droid::where('project_id', $project->id)->whereIn('role', DroidController::BUILDING_ROLES)->where('status', 'idle')->whereNull('task_id')->orderBy('unit')->get();
         if ($idle->isEmpty()) {
             return 0;
         }
@@ -73,7 +75,7 @@ class Autopilot
         $cards = $project->tasks()->where('column', 'ready')->whereNull('builder_id')->orderByRaw(Task::BY_PRIORITY)->orderBy('position')->get();
         foreach ($cards as $task) {
             /** @var Task $task */
-            $droid = $idle->first(fn (Droid $d) => $task->engine === null || $d->provider === $task->engine) ?? $idle->first();
+            $droid = $this->builderFor($task, $idle);
             if (! $droid) {
                 break;
             }
@@ -88,5 +90,25 @@ class Autopilot
         }
 
         return $assigned;
+    }
+
+    /**
+     * The idle droid for a card: a specialist its labels call for (a Fixer for
+     * bugs, Docs for docs), else a Builder; on the card's engine when possible.
+     *
+     * @param  Collection<int, Droid>  $idle
+     */
+    private function builderFor(Task $task, Collection $idle): ?Droid
+    {
+        $roles = collect($task->labels ?? [])->map(fn (string $l) => DroidController::LABEL_ROLES[strtolower($l)] ?? null)->filter()->unique()->values()->all();
+        foreach ([...$roles, 'Builder'] as $role) {
+            $pool = $idle->where('role', $role);
+            $droid = $pool->first(fn (Droid $d) => $task->engine === null || $d->provider === $task->engine) ?? $pool->first();
+            if ($droid) {
+                return $droid;
+            }
+        }
+
+        return null;
     }
 }
