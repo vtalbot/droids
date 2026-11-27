@@ -16,6 +16,7 @@ use App\Models\Subscription;
 use App\Models\SubscriptionSchedule;
 use App\Models\Task;
 use App\Models\Worker;
+use App\Runs\SubscriptionPicker;
 use Illuminate\Support\Collection;
 
 /**
@@ -86,13 +87,40 @@ class FactoryState
                 'updated' => $p->memory_updated_at?->diffForHumans(),
             ]]),
             'runs' => $this->runs($slugs),
-            'asks' => Run::whereIn('kind', Run::ASK_KINDS)->whereIn('status', Run::ACTIVE)->get(['topic', 'kind', 'status'])
-                ->mapWithKeys(fn (Run $r) => [(string) $r->topic => ['kind' => $r->kind, 'status' => $r->status]]),
+            'asks' => $this->asks(),
             'workers' => [
                 'total' => Worker::count(),
                 'online' => Worker::where('last_seen_at', '>', now()->subMinutes(2))->count(),
             ],
         ];
+    }
+
+    /**
+     * Conversations waiting on a worker, with the reason when no worker can take them.
+     *
+     * @return array<string, array<string, string>>
+     */
+    private function asks(): array
+    {
+        $runs = Run::with('droid')->whereIn('kind', Run::ASK_KINDS)->whereIn('status', Run::ACTIVE)->get();
+        $online = Worker::where('last_seen_at', '>', now()->subMinutes(2))->get();
+        $signedIn = [];
+        foreach ($online as $w) {
+            foreach ($w->subscriptions ?? [] as $slug) {
+                $signedIn[] = $slug;
+            }
+        }
+        $picker = app(SubscriptionPicker::class);
+
+        $asks = [];
+        foreach ($runs as $r) {
+            $why = $r->status === 'queued' && $online->isNotEmpty()
+                ? $picker->blocker($r->droid->provider, $signedIn, true)
+                : null;
+            $asks[(string) $r->topic] = array_filter(['kind' => $r->kind, 'status' => $r->status, 'why' => $why]);
+        }
+
+        return $asks;
     }
 
     /** @return array<string, mixed> */
