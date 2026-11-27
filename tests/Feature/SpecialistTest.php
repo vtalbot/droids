@@ -67,7 +67,7 @@ class SpecialistTest extends TestCase
     {
         $this->postJson('/factory/droids/atlas/ask', ['kind' => 'recruit', 'text' => 'Someone cheap for bugs'])->assertCreated();
         $prompt = $this->withToken($this->token)->postJson('/api/worker/claim', ['subscriptions' => ['claude-max']])->json('run.prompt');
-        $this->assertStringContainsString('- Fixer: takes small Ready cards labelled bug or chore (GPT-5.1-Codex-Mini or Haiku 5.5)', $prompt);
+        $this->assertStringContainsString('- Fixer: takes small Ready cards labelled bug or chore (Haiku 5.5 or the lightest GPT model on Codex)', $prompt);
         $this->assertStringContainsString('Pick the smallest model that does the role well', $prompt);
     }
 

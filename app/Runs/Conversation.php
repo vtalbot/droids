@@ -246,7 +246,7 @@ class Conversation
             '- "name": a short, friendly one-word droid name that is not taken.',
             '- "role": one of these, with what it does and the models that fit it:',
             ...$roles,
-            "- \"provider\" and \"model\": pick from {$models}. Claude fits design, review and careful work; Codex fits scoped implementation. Pick the smallest model that does the role well: light roles (Triager, Fixer, Docs, Copywriter) run well on Haiku 5.5 or GPT-5.1-Codex-Mini, which keeps the big models free for building and review.",
+            "- \"provider\" and \"model\": pick from {$models}. Claude fits design, review and careful work; Codex fits scoped implementation. Pick the smallest model that does the role well: light roles (Triager, Fixer, Docs, Copywriter) run well on Haiku 5.5 or the lightest GPT model on Codex, which keeps the big models free for building and review.",
             '- "pitch": two sentences in the droid\'s own voice, introducing itself and what it is good at.',
             '- "why": one sentence on why the person needs it, grounded in their request, the crew or the projects.',
             '- "instructions": standing instructions for the droid, three or four short rules.',
