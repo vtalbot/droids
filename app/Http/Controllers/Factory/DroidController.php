@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Factory;
 
 use App\Models\Activity;
 use App\Models\Droid;
+use App\Models\EngineModel;
 use App\Models\Project;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,7 +13,34 @@ use Illuminate\Validation\Rule;
 
 class DroidController extends Controller
 {
-    public const ROLES = ['Builder', 'Reviewer', 'Designer', 'Tester', 'Planner', 'Docs', 'HR'];
+    public const ROLES = ['Builder', 'Reviewer', 'Planner', 'Designer', 'Tester', 'Docs', 'Triager', 'Fixer', 'Copywriter', 'HR'];
+
+    /**
+     * What each role does and the model that fits it. Light roles run well on
+     * the small models, which keeps the big ones free for building and review.
+     */
+    public const ROLE_GUIDE = [
+        'Builder' => ['builds Ready cards and opens a pull request for each', 'Sonnet 5.5, Opus 5.5 or GPT-5.1-Codex'],
+        'Reviewer' => ['reviews pull requests and sends changes back to the builder', 'Opus 5.5, ideally on the other engine than the builder'],
+        'Planner' => ['plans tasks and milestones with the person in the project discussion', 'Opus 5.5 or Sonnet 5.5'],
+        'Designer' => ['keeps the design files of the project up to date', 'Opus 5.5'],
+        'Tester' => ['takes Ready cards labelled test and writes the missing tests', 'Sonnet 5.5 or GPT-5.1-Codex-Mini'],
+        'Docs' => ['takes Ready cards labelled docs and writes the documentation', 'Haiku 5.5 or GPT-5.1-Codex-Mini'],
+        'Triager' => ['triages the Ideas column: acceptance criteria, priority and questions', 'Haiku 5.5'],
+        'Fixer' => ['takes small Ready cards labelled bug or chore', 'GPT-5.1-Codex-Mini or Haiku 5.5'],
+        'Copywriter' => ['suggests names, sender addresses and wording to prefill forms', 'Haiku 5.5'],
+        'HR' => ['proposes new droids to hire', 'Sonnet 5.5'],
+    ];
+
+    /** Card labels a specialist takes from Ready before a Builder does. */
+    public const LABEL_ROLES = [
+        'bug' => 'Fixer', 'chore' => 'Fixer', 'fix' => 'Fixer',
+        'docs' => 'Docs', 'documentation' => 'Docs',
+        'test' => 'Tester', 'tests' => 'Tester', 'testing' => 'Tester',
+    ];
+
+    /** Roles that build cards from Ready. */
+    public const BUILDING_ROLES = ['Builder', 'Fixer', 'Docs', 'Tester'];
 
     /** The models offered per engine, as the UI labels them. */
     public const MODELS = [
@@ -63,7 +91,11 @@ class DroidController extends Controller
     public function update(Request $request, Droid $droid): JsonResponse
     {
         $data = $request->validate([
-            'model' => ['sometimes', 'string', 'max:60'],
+            'name' => ['sometimes', 'string', 'max:40'],
+            'model' => ['sometimes', 'string', Rule::in(EngineModel::labels()[$droid->provider] ?? [])],
+            'role' => ['sometimes', Rule::in(self::ROLES)],
+            'autonomy' => ['sometimes', Rule::in(['ask', 'pr', 'merge'])],
+            'instructions' => ['sometimes', 'nullable', 'string', 'max:5000'],
             'add_rules' => ['sometimes', 'array', 'max:20'],
             'add_rules.*' => ['string', 'max:300'],
             'project' => ['sometimes', 'nullable', 'string', 'exists:projects,slug'],
@@ -79,8 +111,10 @@ class DroidController extends Controller
             }
         }
 
-        if (isset($data['model'])) {
-            $droid->model = $data['model'];
+        $changed = array_intersect_key($data, array_flip(['name', 'model', 'role', 'autonomy', 'instructions']));
+        $droid->fill($changed);
+        if (array_intersect(array_keys($changed), ['name', 'role']) !== [] && $droid->isDirty(['name', 'role'])) {
+            Activity::create(['droid_id' => $droid->id, 'text' => "is now {$droid->name}, {$droid->role}"]);
         }
 
         if (! empty($data['add_rules'])) {

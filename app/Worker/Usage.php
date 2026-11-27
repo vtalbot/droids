@@ -48,7 +48,7 @@ class Usage
         return $out;
     }
 
-    private function isCodex(string $dir): bool
+    public function isCodex(string $dir): bool
     {
         return File::exists($dir.'/auth.json') || File::exists($dir.'/config.toml') || File::isDirectory($dir.'/sessions');
     }
@@ -78,7 +78,7 @@ class Usage
     }
 
     /** The login's OAuth token: in its folder, or in the macOS keychain. */
-    private function claudeToken(string $dir, bool $default): ?string
+    public function claudeToken(string $dir, bool $default): ?string
     {
         $json = File::exists($dir.'/.credentials.json') ? (string) File::get($dir.'/.credentials.json') : null;
         if ($json === null && PHP_OS_FAMILY === 'Darwin') {

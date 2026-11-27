@@ -7,6 +7,7 @@ use App\Models\ChatMessage;
 use App\Models\CloudConnection;
 use App\Models\DesignFile;
 use App\Models\Droid;
+use App\Models\EngineModel;
 use App\Models\GithubApp;
 use App\Models\Milestone;
 use App\Models\Project;
@@ -54,6 +55,8 @@ class FactoryState
                 'minutes' => $d->minutes,
                 'cost' => $d->cost,
                 'seed' => $d->seed,
+                'autonomy' => $d->autonomy,
+                'instructions' => $d->instructions,
             ])->values(),
             'issues' => $tasks->map(fn (Task $t) => array_filter([
                 'n' => $t->number,
@@ -62,6 +65,7 @@ class FactoryState
                 'col' => $t->column,
                 'labels' => $t->labels ?? [],
                 'question' => $t->question,
+                'priority' => $t->priorityName(),
                 'builder' => $t->builder_id ? $droidSlugs[$t->builder_id] : null,
                 'reviewer' => $t->reviewer_id ? $droidSlugs[$t->reviewer_id] : null,
                 'engine' => $t->engine,
@@ -90,6 +94,8 @@ class FactoryState
             ]]),
             'runs' => $this->runs($slugs),
             'asks' => $this->asks(),
+            // The models to offer per engine, with the ones workers found.
+            'models' => EngineModel::labels(),
             'workers' => [
                 'total' => Worker::count(),
                 'online' => Worker::where('last_seen_at', '>', now()->subMinutes(2))->count(),

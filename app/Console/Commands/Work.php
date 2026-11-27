@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Worker\Client;
+use App\Worker\Models;
 use App\Worker\Runner;
 use App\Worker\Usage;
 use Illuminate\Console\Command;
@@ -21,15 +22,23 @@ class Work extends Command
     /** Seconds between usage reports. */
     private const USAGE_EVERY = 300;
 
-    public function handle(Client $client, Runner $runner, Usage $usage): int
+    /** Seconds between looking for new models. */
+    private const MODELS_EVERY = 3600;
+
+    public function handle(Client $client, Runner $runner, Usage $usage, Models $models): int
     {
         $reported = 0;
+        $looked = 0;
         $this->info('Droids worker started. Signed in to: '.(implode(', ', Runner::signedIn()) ?: 'no subscriptions yet'));
 
         do {
             if (time() - $reported >= self::USAGE_EVERY) {
                 $reported = time();
                 $this->reportUsage($client, $usage);
+            }
+            if (time() - $looked >= self::MODELS_EVERY) {
+                $looked = time();
+                $this->reportModels($client, $models);
             }
             try {
                 $job = $client->claim(Runner::signedIn());
@@ -59,6 +68,18 @@ class Work extends Command
         } while (! $this->option('once'));
 
         return self::SUCCESS;
+    }
+
+    /** Like usage, finding models never stops the worker. */
+    private function reportModels(Client $client, Models $models): void
+    {
+        try {
+            $found = $models->read();
+            $client->models($found);
+            $this->line('Models found: '.(implode(', ', array_map(fn (array $m) => $m['label'], [...$found['claude'], ...$found['codex']])) ?: 'none'));
+        } catch (Throwable $e) {
+            $this->warn('Could not report the available models: '.$e->getMessage());
+        }
     }
 
     /** Usage is extra: a failure here never stops the worker. */

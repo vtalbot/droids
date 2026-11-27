@@ -7,6 +7,7 @@ use App\GitHub\RepositoryWriter;
 use App\Models\Activity;
 use App\Models\ChatMessage;
 use App\Models\Droid;
+use App\Models\EngineModel;
 use App\Models\Project;
 use App\Models\Run;
 use App\Models\Subscription;
@@ -232,6 +233,10 @@ class RunQueue
     /** Map the model label shown in the UI to the CLI's model name. */
     private function model(Droid $droid): string
     {
+        // A model a worker found carries the exact id its CLI takes.
+        if ($id = EngineModel::cliId($droid->provider, $droid->model)) {
+            return $id;
+        }
         if ($droid->provider === 'claude') {
             return match (true) {
                 str_starts_with($droid->model, 'Opus') => 'opus',

@@ -228,7 +228,7 @@ class ConversationTest extends TestCase
         $this->assertStringContainsString('- CL-01 Cog: Planner on claude Opus 5.5, on Droids', $job['prompt']);
         $this->assertStringContainsString('- Droids (vtalbot/droids): 1 open issues, labels: ui (1), bug (1)', $job['prompt']);
         $this->assertStringContainsString('Names already taken (crew, starters and earlier candidates): Cog, Mira, Bolt, Lumen, Atlas, Iris, Probe.', $job['prompt']);
-        $this->assertStringContainsString('Builder, Reviewer, Designer, Tester, Planner, Docs, HR', $job['prompt']);
+        $this->assertStringContainsString('- Reviewer: reviews pull requests', $job['prompt']);
         $this->assertStringContainsString('I need a security reviewer.', $job['prompt']);
 
         $this->finish($job['id'], ['status' => 'succeeded', 'summary' => '{"message": "Two droids.", "candidates": [

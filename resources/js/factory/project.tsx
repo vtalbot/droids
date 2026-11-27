@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useUrlParam } from '@/factory/url';
 import {
     Card,
     CardContent,
@@ -77,7 +78,8 @@ import { DesignPanel } from '@/factory/design';
 import { MemoryPanel } from '@/factory/memory';
 import { DnsPanel } from '@/factory/dns';
 import { CloudDomains, EmailPanel } from '@/factory/email';
-import { CrewCard } from '@/factory/crew';
+import { CrewCard, type AskHr } from '@/factory/crew';
+import { SuggestButton } from '@/factory/suggest';
 import { cn } from '@/lib/utils';
 import { useSave } from '@/factory/api';
 import type { Store } from '@/factory/app';
@@ -95,6 +97,7 @@ type Props = {
     designWith: (pid: string) => void;
     discuss: (pid: string) => void;
     openChat: (id: string) => void;
+    askHr: AskHr;
 };
 
 const engineCfg = {
@@ -180,6 +183,13 @@ function RenameProject({ p }: { p: P }) {
                             autoFocus
                             onChange={(e) => setName(e.target.value)}
                         />
+                        <SuggestButton
+                            pid={p.id}
+                            form="project"
+                            values={{ name }}
+                            onFill={(f) => f.name && setName(f.name)}
+                            className="w-fit"
+                        />
                         <DialogFooter className="mt-2">
                             <Button
                                 type="button"
@@ -206,9 +216,24 @@ function RenameProject({ p }: { p: P }) {
     );
 }
 
+const PROJECT_TABS = [
+    'overview',
+    'roadmap',
+    'design',
+    'memory',
+    'dns',
+    'email',
+    'cloud',
+] as const;
+
 export function ProjectView(props: Props) {
+    if (props.project === 'all') return <Portfolio {...props} />;
+    return <ProjectPage {...props} />;
+}
+
+function ProjectPage(props: Props) {
     const { store, project } = props;
-    if (project === 'all') return <Portfolio {...props} />;
+    const [tab, setTab] = useUrlParam('tab', PROJECT_TABS, 'overview');
     const p = props.proj(project);
     return (
         <div>
@@ -249,7 +274,7 @@ export function ProjectView(props: Props) {
                     </div>
                 </div>
             </div>
-            <Tabs defaultValue="overview" className="p-4 md:p-6">
+            <Tabs value={tab} onValueChange={setTab} className="p-4 md:p-6">
                 <TabsList>
                     <TabsTrigger value="overview">Overview</TabsTrigger>
                     <TabsTrigger value="roadmap">
@@ -412,7 +437,7 @@ function emptyStats(p: P): Stats {
     };
 }
 
-function Overview({ store, p, openChat }: Props & { p: P }) {
+function Overview({ store, p, openChat, askHr }: Props & { p: P }) {
     const st = store.stats[p.id] ?? emptyStats(p);
     // Nothing closed or run yet: show dashes instead of zeros that look like data.
     const fresh =
@@ -476,7 +501,12 @@ function Overview({ store, p, openChat }: Props & { p: P }) {
                     note={health.note}
                 />
             </div>
-            <CrewCard store={store} pid={p.id} openChat={openChat} />
+            <CrewCard
+                store={store}
+                pid={p.id}
+                openChat={openChat}
+                askHr={askHr}
+            />
             {fresh && (
                 <p className="text-sm text-muted-foreground">
                     No history yet: these charts fill in as droids close issues

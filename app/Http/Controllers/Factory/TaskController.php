@@ -96,13 +96,19 @@ class TaskController extends Controller
     public function update(Request $request, Project $project, int $number): JsonResponse
     {
         $data = $request->validate([
-            'column' => ['required', Rule::in(Task::COLUMNS)],
+            'column' => [Rule::requiredIf(! $request->has('priority')), Rule::in(Task::COLUMNS)],
+            'priority' => ['sometimes', 'nullable', Rule::in(Task::PRIORITIES)],
         ]);
 
         $task = $project->tasks()->where('number', $number)->firstOrFail();
-        $task->update(['column' => $data['column']]);
+        if (array_key_exists('priority', $data)) {
+            $task->update(['priority' => Task::priorityValue($data['priority'])]);
+        }
+        if (isset($data['column'])) {
+            $task->update(['column' => $data['column']]);
+        }
 
-        if ($data['column'] === 'done') {
+        if (($data['column'] ?? null) === 'done') {
             Droid::where('task_id', $task->id)->update(['status' => 'idle', 'task_id' => null, 'step' => '', 'progress' => 0]);
         }
 

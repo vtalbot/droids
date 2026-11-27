@@ -21,6 +21,12 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import {
+    InputGroup,
+    InputGroupAddon,
+    InputGroupInput,
+    InputGroupText,
+} from '@/components/ui/input-group';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -33,6 +39,7 @@ import {
 } from '@/components/ui/table';
 import { request } from '@/factory/api';
 import type { CloudEnv } from '@/factory/data';
+import { SuggestButton } from '@/factory/suggest';
 import { cn } from '@/lib/utils';
 
 /** A DNS record another service asked for, and whether Cloudflare has it. */
@@ -214,23 +221,34 @@ type EmailPanelData = {
     errors: string[];
 };
 
+/** What can go before the @ of an address: anything after an @ is the domain, so it is dropped. */
+const emailLocal = (v: string) =>
+    v
+        .split('@')[0]
+        .toLowerCase()
+        .replace(/[^a-z0-9._+-]/g, '');
+
 /** Sending through Laravel Cloud, receiving through Resend, and the DNS both need. */
 export function EmailPanel({ pid }: { pid: string }) {
     const base = `/factory/projects/${encodeURIComponent(pid)}/email`;
     const { panel, error, busy, run } = usePanel<EmailPanelData>(base);
     const [env, setEnv] = useState('');
-    const [from, setFrom] = useState('');
+    // Only the part before the @: the domain is the project's.
+    const [local, setLocal] = useState('');
     const [name, setName] = useState('');
     const [receiving, setReceiving] = useState(false);
     useEffect(() => {
         if (!panel) return;
         const e = panel.envs.find((x) => x.email) ?? panel.envs[0];
         setEnv((v) => v || e?.id || '');
-        setFrom(
+        const saved = e?.email?.from ?? '';
+        setLocal(
             (v) =>
                 v ||
-                e?.email?.from ||
-                (panel.domain ? `hello@${panel.domain}` : ''),
+                (panel.domain &&
+                saved.toLowerCase().endsWith(`@${panel.domain.toLowerCase()}`)
+                    ? saved.slice(0, saved.lastIndexOf('@'))
+                    : 'hello'),
         );
         setName((v) => v || e?.email?.name || '');
         setReceiving(panel.resend?.receiving ?? false);
@@ -256,6 +274,7 @@ export function EmailPanel({ pid }: { pid: string }) {
             </div>
         );
 
+    const from = local ? `${local}@${panel.domain}` : '';
     const missing = [
         ...(panel.sending?.records ?? []),
         ...(panel.resend?.records ?? []),
@@ -286,7 +305,7 @@ export function EmailPanel({ pid }: { pid: string }) {
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-3 px-4">
-                    <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="grid gap-3 sm:grid-cols-4">
                         {panel.envs.length > 0 && (
                             <div className="grid gap-1.5">
                                 <Label htmlFor="email-env">Environment</Label>
@@ -305,14 +324,31 @@ export function EmailPanel({ pid }: { pid: string }) {
                                 </select>
                             </div>
                         )}
-                        <div className="grid gap-1.5">
+                        <div className="grid gap-1.5 sm:col-span-2">
                             <Label htmlFor="email-from">From address</Label>
-                            <Input
-                                id="email-from"
-                                value={from}
-                                onChange={(e) => setFrom(e.target.value)}
-                                placeholder={`hello@${panel.domain}`}
-                            />
+                            <InputGroup>
+                                <InputGroupInput
+                                    id="email-from"
+                                    value={local}
+                                    onChange={(e) =>
+                                        setLocal(emailLocal(e.target.value))
+                                    }
+                                    placeholder="hello"
+                                    autoComplete="off"
+                                    spellCheck={false}
+                                />
+                                <InputGroupAddon
+                                    align="inline-end"
+                                    className="max-w-[60%]"
+                                >
+                                    <InputGroupText
+                                        className="truncate"
+                                        title={`@${panel.domain}`}
+                                    >
+                                        @{panel.domain}
+                                    </InputGroupText>
+                                </InputGroupAddon>
+                            </InputGroup>
                         </div>
                         <div className="grid gap-1.5">
                             <Label htmlFor="email-name">From name</Label>
@@ -338,6 +374,16 @@ export function EmailPanel({ pid }: { pid: string }) {
                         )}
                     </label>
                     <div className="flex flex-wrap gap-2">
+                        <SuggestButton
+                            pid={pid}
+                            form="email"
+                            values={{ from_local: local, from_name: name }}
+                            onFill={(f) => {
+                                if (f.from_local)
+                                    setLocal(emailLocal(f.from_local));
+                                if (f.from_name) setName(f.from_name);
+                            }}
+                        />
                         <Button
                             disabled={!!busy || !from || !name}
                             onClick={async () => {

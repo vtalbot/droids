@@ -50,9 +50,11 @@ class AutopilotTest extends TestCase
         $this->assertStringContainsString('#1 Add dark mode', $job['prompt']);
         $this->assertStringContainsString('"questions"', $job['prompt']);
         $this->withToken($this->token)->postJson("/api/worker/runs/{$job['id']}/finish", ['status' => 'succeeded', 'summary' => '{"message": "Moved #1. For #2: which page is slow?",
-            "ready": [{"number": 1, "criteria": "- A toggle in settings"}], "questions": [{"number": 2, "question": "Which page is slow?"}]}'])->assertOk();
+            "ready": [{"number": 1, "priority": "high", "criteria": "- A toggle in settings"}], "questions": [{"number": 2, "priority": "whenever", "question": "Which page is slow?"}]}'])->assertOk();
 
         $this->assertSame('ready', $this->project->tasks()->where('number', 1)->value('column'));
+        $this->assertSame([2, null], [$this->project->tasks()->where('number', 1)->value('priority'), $this->project->tasks()->where('number', 2)->value('priority')], 'an unknown priority is ignored');
+        $this->assertStringContainsString('"priority"', $job['prompt']);
         $this->assertSame(['backlog', 'Which page is slow?'], array_values($this->project->tasks()->where('number', 2)->first(['column', 'question'])->toArray()));
         $chat = $this->getJson('/factory/state')->json('store.chats')['discuss:droids'];
         $this->assertSame('Moved #1. For #2: which page is slow?', end($chat)['text']);
@@ -83,6 +85,26 @@ class AutopilotTest extends TestCase
         $this->assertSame(['progress', $codex->id], [$task->column, $task->builder_id]);
         $this->assertSame('idle', $claude->fresh()->status);
         $this->assertSame('backlog', $this->project->tasks()->where('number', 2)->value('column'), 'Ideas cards wait for triage');
+    }
+
+    public function test_builders_take_the_highest_priority_ready_card_first(): void
+    {
+        $this->project->update(['auto_triage' => false, 'auto_build' => true]);
+        $this->project->tasks()->where('number', 1)->update(['column' => 'ready', 'priority' => 4]);
+        $this->project->tasks()->where('number', 2)->update(['column' => 'ready']);
+        $this->project->tasks()->create(['number' => 3, 'title' => 'Fix login', 'column' => 'ready', 'position' => 3]);
+        $bolt = Droid::create(['slug' => 'bolt', 'unit' => 'CL-02', 'name' => 'Bolt', 'provider' => 'claude', 'model' => 'Opus 5.5', 'role' => 'Builder', 'project_id' => $this->project->id]);
+
+        $this->patchJson('/factory/projects/droids/tasks/3', ['priority' => 'urgent'])->assertOk()
+            ->assertJsonPath('store.issues.2.priority', 'urgent');
+        $this->patchJson('/factory/projects/droids/tasks/3', ['priority' => 'someday'])->assertJsonValidationErrors('priority');
+        $this->patchJson('/factory/projects/droids/tasks/2', [])->assertJsonValidationErrors('column');
+
+        $this->artisan('droids:autopilot')->assertSuccessful();
+        $this->assertSame($bolt->id, $this->project->tasks()->where('number', 3)->value('builder_id'));
+
+        $this->patchJson('/factory/projects/droids/tasks/3', ['priority' => null])->assertOk();
+        $this->assertNull($this->project->tasks()->where('number', 3)->value('priority'));
     }
 
     public function test_autopilot_is_switched_per_project_and_only_the_person_asks_questions(): void

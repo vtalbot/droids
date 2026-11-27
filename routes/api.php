@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('worker')->middleware(['worker', 'throttle:120,1'])->group(function () {
     Route::post('claim', [WorkerController::class, 'claim']);
     Route::post('usage', [WorkerController::class, 'usage']);
+    Route::post('models', [WorkerController::class, 'models']);
     Route::post('runs/{run}/progress', [WorkerController::class, 'progress']);
     Route::post('runs/{run}/token', [WorkerController::class, 'token']);
     Route::post('runs/{run}/finish', [WorkerController::class, 'finish']);
