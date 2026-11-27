@@ -28,9 +28,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('cloud/applications', [Factory\CloudController::class, 'applications'])->name('cloud.applications');
         Route::post('projects/{project:slug}/cloud', [Factory\CloudController::class, 'link'])->name('cloud.link');
+        Route::get('projects/{project:slug}/domain', [Factory\DomainController::class, 'show'])->name('domain.show');
+        Route::put('projects/{project:slug}/domain', [Factory\DomainController::class, 'update'])->name('domain.update');
+        Route::post('projects/{project:slug}/dns', [Factory\DomainController::class, 'storeRecord'])->name('dns.store');
+        Route::delete('projects/{project:slug}/dns/{record}', [Factory\DomainController::class, 'destroyRecord'])->name('dns.destroy');
         Route::post('projects/{project:slug}/cloud/applications', [Factory\CloudController::class, 'create'])->name('cloud.create');
         Route::delete('projects/{project:slug}/cloud', [Factory\CloudController::class, 'unlink'])->name('cloud.unlink');
         Route::post('projects/{project:slug}/cloud/refresh', [Factory\CloudController::class, 'refresh'])->name('cloud.refresh');
+        Route::put('projects/{project:slug}/cloud/email', [Factory\CloudController::class, 'email'])->name('cloud.email');
         Route::post('projects/{project:slug}/cloud/deploy', [Factory\CloudController::class, 'deploy'])->name('cloud.deploy');
         Route::get('projects/{project:slug}/cloud/deployments/{deployment}/logs', [Factory\CloudController::class, 'deploymentLogs'])->name('cloud.deployment-logs');
         Route::get('projects/{project:slug}/cloud/metrics', [Factory\CloudController::class, 'metrics'])->name('cloud.metrics');

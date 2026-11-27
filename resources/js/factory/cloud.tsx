@@ -11,6 +11,7 @@ import {
     GitCommitHorizontalIcon,
     LinkIcon,
     LoaderCircleIcon,
+    MailIcon,
     MoonIcon,
     PlusIcon,
     RocketIcon,
@@ -536,6 +537,7 @@ export function CloudPanel({
                         >
                             <RotateCwIcon />
                         </Button>
+                        <EmailDialog pid={pid} envs={app.envs} />
                         <Button
                             variant="ghost"
                             size="icon"
@@ -1124,6 +1126,149 @@ function DeploymentLogs({
                 </div>
             </DialogContent>
         </Dialog>
+    );
+}
+
+/** Send email from an environment with Laravel Cloud's Resend integration. */
+function EmailDialog({ pid, envs }: { pid: string; envs: CloudEnv[] }) {
+    const save = useSave();
+    const [open, setOpen] = useState(false);
+    const [env, setEnv] = useState('');
+    const [from, setFrom] = useState('');
+    const [name, setName] = useState('');
+    const [busy, setBusy] = useState(false);
+    const current = envs.find((e) => e.id === env) ?? envs[0];
+    const pick = (e?: CloudEnv) => {
+        if (!e) return;
+        setEnv(e.id);
+        setFrom(e.email?.from ?? '');
+        setName(e.email?.name ?? '');
+    };
+    const sending = envs.filter((e) => e.email).length;
+    const submit = async () => {
+        if (!current || busy) return;
+        setBusy(true);
+        const res = await save(
+            'PUT',
+            `/factory/projects/${encodeURIComponent(pid)}/cloud/email`,
+            { environment: current.id, from_address: from, from_name: name },
+        );
+        setBusy(false);
+        if (!res) return;
+        setOpen(false);
+        toast.success(`${current.name} sends email as ${from}`, {
+            description:
+                'Deploy the environment so it picks up the mail settings.',
+        });
+    };
+    return (
+        <>
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                    pick(envs[0]);
+                    setOpen(true);
+                }}
+            >
+                <MailIcon />
+                Email
+                {sending > 0 && (
+                    <Badge variant="secondary" className="ml-0.5">
+                        {sending}/{envs.length}
+                    </Badge>
+                )}
+            </Button>
+            <Dialog open={open} onOpenChange={setOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Email with Resend</DialogTitle>
+                        <DialogDescription>
+                            Laravel Cloud gives the environment a Resend key and
+                            sets <code className="font-mono">MAIL_MAILER</code>,{' '}
+                            <code className="font-mono">RESEND_API_KEY</code>{' '}
+                            and the sender. Connect Resend once in your Laravel
+                            Cloud organization's integrations, and verify the
+                            sending domain there.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form
+                        className="grid gap-4"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            void submit();
+                        }}
+                    >
+                        <div className="grid gap-2">
+                            <Label htmlFor="email-env">Environment</Label>
+                            <Select
+                                value={current?.id}
+                                onValueChange={(v) =>
+                                    pick(envs.find((e) => e.id === v))
+                                }
+                            >
+                                <SelectTrigger id="email-env">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {envs.map((e) => (
+                                        <SelectItem key={e.id} value={e.id}>
+                                            {e.name}
+                                            <span className="text-xs text-muted-foreground">
+                                                {e.email
+                                                    ? `sends as ${e.email.from}`
+                                                    : 'no email yet'}
+                                            </span>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="email-from">From address</Label>
+                            <Input
+                                id="email-from"
+                                type="email"
+                                value={from}
+                                placeholder="hello@notifications.example.com"
+                                onChange={(e) => setFrom(e.target.value)}
+                                required
+                            />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="email-name">From name</Label>
+                            <Input
+                                id="email-name"
+                                value={name}
+                                maxLength={255}
+                                onChange={(e) => setName(e.target.value)}
+                                required
+                            />
+                        </div>
+                        <DialogFooter>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setOpen(false)}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                type="submit"
+                                disabled={busy || !from.trim() || !name.trim()}
+                            >
+                                {busy && (
+                                    <LoaderCircleIcon className="animate-spin" />
+                                )}
+                                {current?.email
+                                    ? 'Update sender'
+                                    : 'Set up email'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+        </>
     );
 }
 

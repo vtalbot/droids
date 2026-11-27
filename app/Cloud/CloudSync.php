@@ -148,6 +148,11 @@ class CloudSync
             'octane' => (bool) ($a['uses_octane'] ?? false),
             'hibernation' => (bool) ($a['uses_hibernation'] ?? false),
             'pushToDeploy' => (bool) ($a['uses_push_to_deploy'] ?? false),
+            // Laravel Cloud's Resend integration: who the environment sends email as, or null.
+            'email' => is_array($a['resend'] ?? null) ? [
+                'from' => (string) ($a['resend']['from_address'] ?? ''),
+                'name' => (string) ($a['resend']['from_name'] ?? ''),
+            ] : null,
             'region' => $region,
             'instances' => $instances,
             'probes' => [],

@@ -16,6 +16,7 @@ import {
     CircleDotIcon,
     CloudIcon,
     FlagIcon,
+    GlobeIcon,
     LightbulbIcon,
     MessagesSquareIcon,
     NotebookPenIcon,
@@ -73,6 +74,7 @@ import { PrChip } from '@/factory/task-sheet';
 import { CloudPanel, cloudHealth } from '@/factory/cloud';
 import { DesignPanel } from '@/factory/design';
 import { MemoryPanel } from '@/factory/memory';
+import { DnsPanel } from '@/factory/dns';
 import { cn } from '@/lib/utils';
 import { useSave } from '@/factory/api';
 import type { Store } from '@/factory/app';
@@ -258,6 +260,10 @@ export function ProjectView(props: Props) {
                         <BrainIcon />
                         Memory
                     </TabsTrigger>
+                    <TabsTrigger value="dns">
+                        <GlobeIcon />
+                        DNS
+                    </TabsTrigger>
                     <TabsTrigger value="cloud">
                         <CloudIcon />
                         Laravel Cloud
@@ -279,6 +285,9 @@ export function ProjectView(props: Props) {
                 </TabsContent>
                 <TabsContent value="memory" className="mt-4">
                     <MemoryPanel store={store} pid={p.id} />
+                </TabsContent>
+                <TabsContent value="dns" className="mt-4">
+                    <DnsPanel pid={p.id} />
                 </TabsContent>
                 <TabsContent value="cloud" className="mt-4">
                     <CloudPanel store={store} bump={props.bump} pid={p.id} />

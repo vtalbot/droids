@@ -312,6 +312,8 @@ export type CloudEnv = {
     octane: boolean;
     hibernation: boolean;
     pushToDeploy?: boolean;
+    /** Laravel Cloud's Resend integration: who the environment sends email as. */
+    email?: { from: string; name: string } | null;
     region: string;
     instances: {
         name: string;

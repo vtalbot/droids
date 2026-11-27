@@ -92,6 +92,18 @@ class LaravelCloud
         return $this->http()->post("/environments/{$environment}/deployments")->json('data') ?? [];
     }
 
+    /**
+     * Send email from an environment through the organization's Resend
+     * integration, or change who it sends as when it already does.
+     */
+    public function resend(string $environment, string $fromAddress, string $fromName, bool $attached): void
+    {
+        $body = ['from_address' => $fromAddress, 'from_name' => $fromName];
+        $attached
+            ? $this->http()->patch("/environments/{$environment}/resend", $body)
+            : $this->http()->post("/environments/{$environment}/resend", $body);
+    }
+
     /** @return array<string, mixed> build and deploy steps */
     public function deploymentLogs(string $deployment): array
     {

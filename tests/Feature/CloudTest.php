@@ -45,7 +45,7 @@ class CloudTest extends TestCase
                 'data' => [
                     ['id' => 'env-stage', 'type' => 'environments', 'attributes' => ['name' => 'staging', 'status' => 'hibernating', 'vanity_domain' => 'droids-staging.laravel.cloud', 'php_major_version' => '8.4', 'uses_hibernation' => true],
                         'relationships' => ['branch' => ['data' => ['type' => 'branches', 'id' => 'br-2']], 'instances' => ['data' => []]]],
-                    ['id' => 'env-prod', 'type' => 'environments', 'attributes' => ['name' => 'production', 'color' => 'blue', 'status' => 'running', 'php_major_version' => '8.4', 'uses_octane' => true, 'uses_push_to_deploy' => true],
+                    ['id' => 'env-prod', 'type' => 'environments', 'attributes' => ['name' => 'production', 'color' => 'blue', 'status' => 'running', 'php_major_version' => '8.4', 'uses_octane' => true, 'uses_push_to_deploy' => true, 'resend' => ['from_address' => 'hi@droids.dev', 'from_name' => 'Droids', 'key_name' => 'droids-production']],
                         'relationships' => ['branch' => ['data' => ['type' => 'branches', 'id' => 'br-1']], 'primaryDomain' => ['data' => ['type' => 'domains', 'id' => 'dom-1']],
                             'instances' => ['data' => [['type' => 'instances', 'id' => 'in-1'], ['type' => 'instances', 'id' => 'in-2']]]]],
                 ],
@@ -295,5 +295,21 @@ class CloudTest extends TestCase
             ->assertUnprocessable()->assertJsonPath('message', 'Laravel Cloud: The repository is not connected to Laravel Cloud.');
         $this->postJson('/factory/projects/droids/cloud/applications', ['name' => 'Droids', 'region' => 'mars-1'])->assertJsonValidationErrors('region');
         $this->assertNull($this->project->refresh()->cloud_application_id);
+    }
+
+    public function test_email_goes_through_the_cloud_resend_integration(): void
+    {
+        $this->linkProject();
+        [$prod, $stage] = $this->project->cloud_snapshot['envs'];
+        $this->assertSame(['from' => 'hi@droids.dev', 'name' => 'Droids'], $prod['email']);
+        $this->assertNull($stage['email']);
+        Http::fake([self::API.'/environments/*/resend' => Http::response(['data' => []])]);
+
+        $this->putJson('/factory/projects/droids/cloud/email', ['environment' => 'env-stage', 'from_address' => 'staging@droids.dev', 'from_name' => 'Droids staging'])->assertOk();
+        $this->putJson('/factory/projects/droids/cloud/email', ['environment' => 'env-prod', 'from_address' => 'team@droids.dev', 'from_name' => 'Droids'])->assertOk();
+        $this->putJson('/factory/projects/droids/cloud/email', ['environment' => 'env-prod', 'from_address' => 'nope', 'from_name' => 'Droids'])->assertJsonValidationErrors('from_address');
+
+        Http::assertSent(fn (Request $r) => $r->method() === 'POST' && $r->url() === self::API.'/environments/env-stage/resend' && $r['from_name'] === 'Droids staging');
+        Http::assertSent(fn (Request $r) => $r->method() === 'PATCH' && $r->url() === self::API.'/environments/env-prod/resend' && $r['from_address'] === 'team@droids.dev');
     }
 }
