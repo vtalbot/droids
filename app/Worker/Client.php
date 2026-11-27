@@ -31,6 +31,16 @@ class Client
         return $this->http()->throw()->post('claim', ['subscriptions' => $subscriptions, 'version' => self::VERSION])->json('run');
     }
 
+    /**
+     * Report how much of each subscription's limits is used.
+     *
+     * @param  array<string, list<array{label: string, used: float, resets_at: string|null}>>  $usage
+     */
+    public function usage(array $usage): void
+    {
+        $this->http()->post('usage', ['usage' => $usage]);
+    }
+
     /** Report progress. Returns false when the server cancelled the run. */
     public function progress(int $run, ?string $step, ?float $progress, string $log): bool
     {

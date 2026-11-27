@@ -45,23 +45,41 @@ export const activeSub = (store: Store, pv: Provider) => {
     );
 };
 const pct = (x: number) => Math.round(x * 100);
+const tokenCount = (n: number) =>
+    n >= 1_000_000
+        ? `${(n / 1_000_000).toFixed(1)}M`
+        : n >= 1000
+          ? `${Math.round(n / 1000)}k`
+          : String(n);
 
 export function Meter({
     label,
     used,
     note,
+    left,
     className,
 }: {
     label: string;
     used: number;
     note?: string;
+    /** Show what is left next to what is used. */
+    left?: boolean;
     className?: string;
 }) {
     return (
         <div className={cn('grid gap-1.5', className)}>
             <div className="flex items-baseline justify-between gap-2 text-sm">
                 <span>{label}</span>
-                <span className="font-medium tabular-nums">{pct(used)}%</span>
+                <span className="tabular-nums">
+                    <span className="font-medium">{pct(used)}%</span>
+                    {left ? ' used' : ''}
+                    {left && (
+                        <span className="text-muted-foreground">
+                            {' '}
+                            · {100 - pct(used)}% left
+                        </span>
+                    )}
+                </span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                 <div
@@ -251,8 +269,18 @@ function Usage({ store, bump }: { store: Store; bump: () => void }) {
                                                 label={w.label}
                                                 used={w.used}
                                                 note={w.resets}
+                                                left
                                             />
                                         ))}
+                                        {!s.api && (
+                                            <p className="text-xs text-muted-foreground">
+                                                {s.usageAt
+                                                    ? `Plan usage read by your worker ${s.usageAt}.`
+                                                    : s.windows.length === 0
+                                                      ? 'Plan usage shows once a worker signed in to this subscription reports it. Update the worker and restart php artisan droids:work.'
+                                                      : null}
+                                            </p>
+                                        )}
                                         {s.spend && (
                                             <Meter
                                                 label="Monthly spend cap"
@@ -263,14 +291,29 @@ function Usage({ store, bump }: { store: Store; bump: () => void }) {
                                             />
                                         )}
                                         <div>
-                                            <div className="mb-1.5 text-xs text-muted-foreground">
-                                                Last 7 days, share of daily
-                                                limit
+                                            <div className="mb-1.5 flex justify-between gap-2 text-xs text-muted-foreground">
+                                                <span>
+                                                    {s.tokens
+                                                        ? 'Tokens per day this week'
+                                                        : 'Last 7 days, share of daily limit'}
+                                                </span>
+                                                {s.tokens && (
+                                                    <span className="tabular-nums">
+                                                        {tokenCount(
+                                                            s.tokens.week,
+                                                        )}{' '}
+                                                        tokens
+                                                    </span>
+                                                )}
                                             </div>
                                             <div
                                                 className="flex h-14 items-end gap-1.5"
                                                 role="img"
-                                                aria-label={`Daily usage: ${s.week.map((v, k) => `${DAYS[k]} ${pct(v)}%`).join(', ')}`}
+                                                aria-label={
+                                                    s.tokens
+                                                        ? `Tokens per day: ${s.tokens.days.map((v, k) => `${DAYS[k]} ${tokenCount(v)}`).join(', ')}`
+                                                        : `Daily usage: ${s.week.map((v, k) => `${DAYS[k]} ${pct(v)}%`).join(', ')}`
+                                                }
                                             >
                                                 {s.week.map((v, k) => (
                                                     <div

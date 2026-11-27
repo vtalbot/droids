@@ -17,6 +17,7 @@ use App\Models\SubscriptionSchedule;
 use App\Models\Task;
 use App\Models\Worker;
 use App\Runs\SubscriptionPicker;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 /**
@@ -257,8 +258,16 @@ class FactoryState
     private function subscriptions(): array
     {
         $workers = Worker::orderBy('name')->get(['name', 'subscriptions']);
+        // Tokens per subscription and weekday (0 = Monday), this week.
+        $tokens = [];
+        $runs = Run::whereNotNull('subscription_id')->where('created_at', '>=', now()->startOfWeek())
+            ->get(['subscription_id', 'tokens_in', 'tokens_out', 'created_at']);
+        foreach ($runs as $r) {
+            $day = ($r->created_at->dayOfWeekIso ?? 1) - 1;
+            $tokens[$r->subscription_id][$day] = ($tokens[$r->subscription_id][$day] ?? 0) + $r->tokens_in + $r->tokens_out;
+        }
 
-        return Subscription::orderBy('id')->get()->map(function (Subscription $s) use ($workers) {
+        return Subscription::orderBy('id')->get()->map(function (Subscription $s) use ($workers, $tokens) {
             $on = [];
             foreach ($s->usesApiKey() ? [] : $workers as $w) {
                 if (in_array($s->slug, $w->subscriptions ?? [], true)) {
@@ -266,16 +275,32 @@ class FactoryState
                 }
             }
 
-            return $this->subscription($s, $on);
+            return $this->subscription($s, $on, $tokens[$s->id] ?? []);
         })->values()->all();
     }
 
     /**
      * @param  list<string>  $signedInOn  names of workers that reported a login for this subscription
+     * @param  array<int, int>  $tokens  tokens used this week, by weekday (0 = Monday)
      * @return array<string, mixed>
      */
-    private function subscription(Subscription $s, array $signedInOn): array
+    private function subscription(Subscription $s, array $signedInOn, array $tokens = []): array
     {
+        $days = [];
+        for ($d = 0; $d < 7; $d++) {
+            $days[] = $tokens[$d] ?? 0;
+        }
+        $peak = max($days);
+        $windows = [];
+        foreach ($s->windows ?? [] as $w) {
+            $resets = isset($w['resets_at']) ? Carbon::parse($w['resets_at']) : null;
+            $windows[] = [
+                'label' => $w['label'],
+                'used' => $w['used'],
+                'resets' => $resets ? ($resets->isFuture() ? 'resets '.$resets->diffForHumans() : 'reset '.$resets->diffForHumans()) : (string) ($w['resets'] ?? ''),
+            ];
+        }
+
         return array_filter([
             'id' => $s->slug,
             'provider' => $s->provider,
@@ -285,8 +310,11 @@ class FactoryState
             'api' => $s->usesApiKey(),
             'signedInOn' => $signedInOn,
             'color' => $s->color,
-            'windows' => $s->windows ?? [],
-            'week' => $s->week ?? [],
+            'windows' => $windows,
+            'usageAt' => $s->usage_at?->diffForHumans(),
+            // With runs this week, the bars are tokens per day; sample data keeps its own.
+            'week' => $peak > 0 ? array_map(fn (int $t) => round($t / $peak, 3), $days) : ($s->usage_at ? $days : ($s->week ?? $days)),
+            'tokens' => $peak > 0 || $s->usage_at ? ['days' => $days, 'week' => array_sum($days)] : null,
             'spend' => $s->spend_cap !== null ? ['used' => $s->spend_used ?? 0.0, 'cap' => $s->spend_cap] : null,
         ], fn ($v) => $v !== null);
     }

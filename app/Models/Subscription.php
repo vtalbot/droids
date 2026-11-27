@@ -16,7 +16,8 @@ use Illuminate\Support\Carbon;
  * @property string $color
  * @property bool $enabled
  * @property Carbon|null $limited_until
- * @property list<array{label: string, used: float, resets: string}>|null $windows
+ * @property list<array{label: string, used: float, resets?: string, resets_at?: string|null}>|null $windows
+ * @property Carbon|null $usage_at
  * @property list<float>|null $week
  * @property float|null $spend_used
  * @property float|null $spend_cap
@@ -32,6 +33,7 @@ class Subscription extends Model
         return [
             'enabled' => 'boolean',
             'limited_until' => 'datetime',
+            'usage_at' => 'datetime',
             'api_key' => 'encrypted',
             'windows' => 'array',
             'week' => 'array',
