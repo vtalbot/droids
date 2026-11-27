@@ -80,7 +80,7 @@ class Conversation
         if (str_starts_with($topic, 'triage:')) {
             return 'discuss:'.substr($topic, 7);
         }
-        if (preg_match('/^unblock:([^:]+):\d+$/', $topic, $m) === 1) {
+        if (preg_match('/^(?:unblock|answer):([^:]+):\d+$/', $topic, $m) === 1) {
             return "discuss:{$m[1]}";
         }
 
@@ -111,7 +111,8 @@ class Conversation
             'reflect' => $this->reflectContext($droid),
             'design' => $this->designContext($project),
             'recruit' => $this->recruitContext($run),
-            'triage' => $this->triageContext($project),
+            'triage' => $this->triageContext($project, $droid),
+            'answer' => $this->answerContext($run),
             'suggest' => $this->suggestContext($run),
             'unblock' => $this->unblockContext($run),
             default => $project ? $this->discussContext($project) : $this->chatContext($droid),
@@ -340,7 +341,7 @@ class Conversation
             'propose' => '{"message": "...", "reasoning": "...", "proposals": [{"kind": "feature" or "milestone", "title": "...", "why": "...", "effort": "...", "engine": "claude" or "codex"}], "next": ["..."]}',
             'reflect' => '{"message": "...", "reasoning": "...", "good": ["..."], "improve": ["..."], "rules": ["..."]}',
             'unblock' => '{"message": "...", "reasoning": "...", "action": "retry" or "model" or "ask", "model": "..." or null}',
-            'triage' => '{"message": "...", "reasoning": "...", "ready": [{"number": 12, "priority": "high", "criteria": "- ...\\n- ..."}], "questions": [{"number": 13, "priority": "medium", "question": "..."}]}',
+            'triage' => '{"message": "...", "reasoning": "...", "ready": [{"number": 12, "priority": "high", "criteria": "- ...\\n- ..."}], "questions": [{"number": 13, "priority": "medium", "to": "person" or a crew role, "question": "..."}]}',
             'recruit' => '{"message": "...", "reasoning": "...", "candidates": [{"name": "...", "role": "...", "provider": "claude" or "codex", "model": "...", "pitch": "...", "why": "...", "instructions": "..."}]}',
             default => '{"message": "...", "reasoning": "..."}',
         };
@@ -360,7 +361,7 @@ class Conversation
             ->latest('id')->limit(self::HISTORY + 1)->get()->reverse()->values();
 
         // The newest user message is the request itself; a triage run starts on its own.
-        if (! in_array($run->kind, ['triage', 'unblock'], true) && $messages->last()?->kind === 'user') {
+        if (! in_array($run->kind, ['triage', 'unblock', 'answer'], true) && $messages->last()?->kind === 'user') {
             $messages->pop();
         }
 
@@ -388,6 +389,13 @@ class Conversation
         }
         if ($run->kind === 'unblock') {
             $this->unblocked($run, is_array($data) ? $data : []);
+
+            return;
+        }
+        if ($run->kind === 'answer') {
+            $raw = trim((string) $run->summary);
+            $said = is_array($data) && is_string($data['message'] ?? null) ? $data['message'] : ($raw !== '' && ! is_array($data) ? $raw : null);
+            $this->answered($run, is_array($data) ? $data : [], $said);
 
             return;
         }
@@ -687,18 +695,25 @@ class Conversation
     }
 
     /** @return list<string> */
-    private function triageContext(?Project $project): array
+    private function triageContext(?Project $project, Droid $triager): array
     {
         if (! $project) {
             return ['You are triaging, but no project is selected.'];
         }
+        // Crew droids that can answer a question, by role: never the triager itself.
+        $helpers = Droid::where('project_id', $project->id)->whereKeyNot($triager->id)
+            ->whereNotIn('role', ['HR', 'Triager', 'Mechanic'])->orderBy('unit')->get()->unique('role');
+        $roles = $helpers->map(fn (Droid $d) => "{$d->role} ({$d->name})")->implode(', ');
         $cards = [];
         foreach (self::triageCandidates($project) as $t) {
             $body = $project->isLinked() ? rescue(fn () => $this->github->issueBody($project, $t->number), '', false) : '';
             $cards = [...$cards, '', "#{$t->number} {$t->title}".($t->labels ? ' ['.implode(', ', $t->labels).']' : '').($t->priority ? " (priority set by the person: {$t->priorityName()})" : ''),
                 $body !== '' ? Str::limit($body, 3000) : '(no description)'];
             if ($t->question) {
-                $cards[] = "You asked earlier: {$t->question}";
+                $cards[] = 'You asked earlier'.($t->question_for ? " the {$t->question_for}" : '').": {$t->question}";
+            }
+            if ($t->answer) {
+                $cards[] = "The {$t->question_for} answered: ".Str::limit($t->answer, 1500);
             }
         }
 
@@ -711,10 +726,14 @@ class Conversation
             '',
             'For each card, read the code it touches, then decide:',
             '- Ready: a builder could finish it in under a day without guessing. Put it in "ready" with acceptance criteria as a short Markdown list, which is added to the issue.',
-            '- Not ready: something only the person can decide is missing (scope, behaviour, a choice between options). Put one short, specific question in "questions". Do not ask what you can find in the code.',
+            '- Not ready: something is missing. Put one short, specific question in "questions". Do not ask what you can find in the code yourself.',
+            ...($roles !== '' ? [
+                "  Send it to the droid who can answer from the code, the design or the plan: put its role in \"to\". On the crew: {$roles}. The Planner knows scope and the plan, the Designer the screens and flows, a Builder or Reviewer the technical approach, a Copywriter names and wording.",
+                '  Put "person" in "to" only for what only the person can decide: business rules, pricing, priorities between goals, taste, or anything a droid answered with "only you can decide".',
+            ] : ['  Put "person" in "to": there is no other droid on the crew to ask.']),
             'Give every card a "priority": urgent (broken in production or blocking other work), high (on the active milestone\'s critical path), medium (planned work), or low (nice to have). Builders take the highest priority first. Keep a priority the person set unless the discussion changes it.',
-            'A card you asked about before is ready once the conversation answers it.',
-            'In "message", tell the person in a few sentences which cards you moved and what you need from them, by issue number. They answer in this discussion.',
+            'A card you asked about before is ready once the conversation or the droid you asked answers it.',
+            'In "message", tell the person in a few sentences which cards you moved, which questions you sent to which droid, and what you need from them, by issue number. They answer in this discussion.',
         ];
     }
 
@@ -736,12 +755,84 @@ class Conversation
         foreach (is_array($data['questions'] ?? null) ? $data['questions'] : [] as $q) {
             $task = is_array($q) && is_numeric($q['number'] ?? null) ? $candidates->pull((int) $q['number']) : null;
             if ($task && is_string($q['question'] ?? null) && trim($q['question']) !== '') {
-                $task->update(['triaged_at' => now(), 'question' => Str::limit(trim($q['question']), 500), 'priority' => $this->priorityFor($task, $q)]);
+                $question = Str::limit(trim($q['question']), 500);
+                $helper = $this->helperFor($project, $task, is_string($q['to'] ?? null) ? $q['to'] : 'person');
+                $task->update(['triaged_at' => now(), 'question' => $question, 'question_for' => $helper?->role, 'answer' => null, 'priority' => $this->priorityFor($task, $q)]);
+                if ($helper) {
+                    Run::create([
+                        'droid_id' => $helper->id,
+                        'project_id' => $project->id,
+                        'kind' => 'answer',
+                        'topic' => "answer:{$project->slug}:{$task->number}",
+                        'input' => $question,
+                        'status' => 'queued',
+                    ]);
+                }
             }
         }
         // Cards the droid passed over are looked at again only when they change.
         foreach ($candidates as $task) {
             $task->update(['triaged_at' => now()]);
+        }
+    }
+
+    /**
+     * The crew droid a triage question goes to, or null when it is for the person:
+     * no droid has that role, or a droid was already asked about this card.
+     */
+    private function helperFor(Project $project, Task $task, string $role): ?Droid
+    {
+        if (strtolower($role) === 'person' || Run::where('topic', "answer:{$project->slug}:{$task->number}")->exists()) {
+            return null;
+        }
+
+        return Droid::where('project_id', $project->id)->where('role', ucfirst(strtolower($role)))
+            ->whereNotIn('role', ['HR', 'Triager', 'Mechanic'])->orderBy('unit')->first();
+    }
+
+    /** @return list<string> */
+    private function answerContext(Run $run): array
+    {
+        $project = $run->project;
+        $task = $project?->tasks()->where('number', (int) Str::afterLast((string) $run->topic, ':'))->first();
+        if (! $project || ! $task) {
+            return ['A triage droid asked you about a card that is gone. Say so in "message".'];
+        }
+        $body = $project->isLinked() ? rescue(fn () => $this->github->issueBody($project, $task->number), '', false) : '';
+
+        return [
+            "The droid triaging the Ideas column of {$project->name} ({$project->repo}) asks you about a card before a builder takes it.",
+            '',
+            "#{$task->number} {$task->title}".($task->labels ? ' ['.implode(', ', $task->labels).']' : ''),
+            $body !== '' ? Str::limit($body, 3000) : '(no description)',
+            ...$this->milestoneLines($this->activeMilestone($project)),
+            '',
+            'Answer the question as the '.$run->droid->role.', from the code, the design, the plan and the discussion. Be concrete: name the choice, so a builder can follow it.',
+            'If only the person can decide (business rules, pricing, taste, priorities between goals), start "message" with "Only you can decide:" and say what they need to choose between.',
+            "Start \"message\" with \"On #{$task->number}:\". It is posted in the project discussion.",
+        ];
+    }
+
+    /**
+     * Keep a droid's answer on the card, and send the card back to triage.
+     *
+     * @param  array<mixed>  $data
+     */
+    private function answered(Run $run, array $data, ?string $text): void
+    {
+        $text = $text ?? 'I could not answer this one.';
+        $number = (int) Str::afterLast((string) $run->topic, ':');
+        $task = $run->project?->tasks()->where('number', $number)->first();
+        if (($memory = $this->memoryProject($run)) !== null) {
+            $this->memory->remember($memory, $run->droid, Memory::facts($data['remember'] ?? null));
+        }
+        $this->say($run, 'agent', array_filter([
+            'text' => Str::limit($text, 6000),
+            'reasoning' => is_string($data['reasoning'] ?? null) ? Str::limit($data['reasoning'], 1000) : null,
+        ]));
+        if ($task && $task->column === 'backlog') {
+            // Triaged again on the next autopilot tick, with this answer.
+            $task->update(['answer' => Str::limit($text, 4000), 'triaged_at' => null]);
         }
     }
 

@@ -24,6 +24,8 @@ use Illuminate\Support\Carbon;
  * @property string|null $url
  * @property Carbon|null $triaged_at
  * @property string|null $question what the triage droid asked before the card can be built
+ * @property string|null $question_for the role of the droid the question went to; null for the person
+ * @property string|null $answer what that droid answered
  * @property int|null $priority 1 urgent to 4 low, see PRIORITIES
  */
 class Task extends Model

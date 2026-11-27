@@ -44,6 +44,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('projects/{project:slug}/cloud/domains/{domain}/verify', [Factory\CloudDomainController::class, 'verify'])->name('cloud.domains.verify');
         Route::post('projects/{project:slug}/cloud/domains/{domain}/dns', [Factory\CloudDomainController::class, 'dns'])->name('cloud.domains.dns');
         Route::delete('projects/{project:slug}/cloud/domains/{domain}', [Factory\CloudDomainController::class, 'destroy'])->name('cloud.domains.destroy');
+        Route::post('projects/{project:slug}/triage', [Factory\ProjectController::class, 'triage'])->name('projects.triage');
         Route::post('projects/{project:slug}/suggest', [Factory\SuggestController::class, 'store'])->name('suggest');
         Route::get('projects/{project:slug}/email', [Factory\EmailController::class, 'show'])->name('email.show');
         Route::post('projects/{project:slug}/email/setup', [Factory\EmailController::class, 'setup'])->name('email.setup');

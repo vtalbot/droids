@@ -56,6 +56,8 @@ export type Issue = {
     engine?: Provider;
     /** What the triage droid asked before the card can be built. */
     question?: string | null;
+    /** The crew role the question went to, or null when it waits on the person. */
+    questionFor?: string | null;
     /** Set by the triage droid or the person; builders take the highest first. */
     priority?: Priority;
 };
