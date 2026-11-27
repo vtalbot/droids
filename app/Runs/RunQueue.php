@@ -157,7 +157,7 @@ class RunQueue
         $runs = Run::with(['droid', 'task.project.installation', 'project.installation'])->where('status', 'queued')
             ->orderByRaw("kind in ('build', 'fix', 'review')")->orderBy('id')->limit(20)->get();
         foreach ($runs as $run) {
-            $subscription = $this->picker->pick($run->droid->provider, $signedIn);
+            $subscription = $this->picker->pick($run->droid->provider, $signedIn, null, $run->isConversation());
             if (! $subscription || (! $run->isConversation() && ! $run->task?->project->isLinked())) {
                 continue;
             }

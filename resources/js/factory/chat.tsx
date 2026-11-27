@@ -201,7 +201,7 @@ export function ChatSheet({
     const waiting =
         ask?.status === 'queued'
             ? store.workers?.online
-                ? 'Waiting for your worker to pick this up…'
+                ? (ask?.why ?? 'Waiting for your worker to pick this up…')
                 : 'No worker is online. Start php artisan droids:work to get an answer…'
             : `${d?.unit} is ${ask?.kind === 'reflect' ? 'reviewing its past tasks' : ask?.kind === 'design' ? 'designing' : 'thinking'}…`;
 

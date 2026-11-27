@@ -16,6 +16,7 @@ use App\Models\Subscription;
 use App\Models\SubscriptionSchedule;
 use App\Models\Task;
 use App\Models\Worker;
+use App\Runs\SubscriptionPicker;
 use Illuminate\Support\Collection;
 
 /**
@@ -67,7 +68,7 @@ class FactoryState
             'roadmap' => $projects->mapWithKeys(fn (Project $p) => [$p->slug => $p->milestones->map(fn (Milestone $m) => $this->milestone($m))->values()]),
             'subs' => $this->subscriptions(),
             'paused' => Subscription::where('enabled', false)->pluck('slug')->mapWithKeys(fn ($s) => [$s => true]),
-            'schedule' => SubscriptionSchedule::all()->mapWithKeys(fn (SubscriptionSchedule $s) => [$s->provider => $s->grid]),
+            'schedule' => $this->schedule(),
             'feed' => Activity::latest()->latest('id')->limit(30)->get()->map(fn (Activity $a) => [
                 'droid' => $droidSlugs[$a->droid_id],
                 'text' => $a->text,
@@ -86,13 +87,65 @@ class FactoryState
                 'updated' => $p->memory_updated_at?->diffForHumans(),
             ]]),
             'runs' => $this->runs($slugs),
-            'asks' => Run::whereIn('kind', Run::ASK_KINDS)->whereIn('status', Run::ACTIVE)->get(['topic', 'kind', 'status'])
-                ->mapWithKeys(fn (Run $r) => [(string) $r->topic => ['kind' => $r->kind, 'status' => $r->status]]),
+            'asks' => $this->asks(),
             'workers' => [
                 'total' => Worker::count(),
                 'online' => Worker::where('last_seen_at', '>', now()->subMinutes(2))->count(),
             ],
         ];
+    }
+
+    /**
+     * Each engine's weekly grid, 7 days x 24 hours. An engine nobody has painted
+     * yet gets an empty (paused) grid, so the Schedule tab has something to paint.
+     *
+     * @return array<string, list<list<string>>>
+     */
+    private function schedule(): array
+    {
+        $out = [];
+        foreach (['claude', 'codex'] as $provider) {
+            $grid = SubscriptionSchedule::where('provider', $provider)->first()->grid ?? [];
+            $days = [];
+            for ($d = 0; $d < 7; $d++) {
+                $hours = [];
+                for ($h = 0; $h < 24; $h++) {
+                    $hours[] = $grid[$d][$h] ?? '';
+                }
+                $days[] = $hours;
+            }
+            $out[$provider] = $days;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Conversations waiting on a worker, with the reason when no worker can take them.
+     *
+     * @return array<string, array<string, string>>
+     */
+    private function asks(): array
+    {
+        $runs = Run::with('droid')->whereIn('kind', Run::ASK_KINDS)->whereIn('status', Run::ACTIVE)->get();
+        $online = Worker::where('last_seen_at', '>', now()->subMinutes(2))->get();
+        $signedIn = [];
+        foreach ($online as $w) {
+            foreach ($w->subscriptions ?? [] as $slug) {
+                $signedIn[] = $slug;
+            }
+        }
+        $picker = app(SubscriptionPicker::class);
+
+        $asks = [];
+        foreach ($runs as $r) {
+            $why = $r->status === 'queued' && $online->isNotEmpty()
+                ? $picker->blocker($r->droid->provider, $signedIn, true)
+                : null;
+            $asks[(string) $r->topic] = array_filter(['kind' => $r->kind, 'status' => $r->status, 'why' => $why]);
+        }
+
+        return $asks;
     }
 
     /** @return array<string, mixed> */

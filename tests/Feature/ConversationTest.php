@@ -253,4 +253,29 @@ class ConversationTest extends TestCase
         $this->assertNull($mira->project_id);
         $this->assertSame('HR', $mira->role);
     }
+
+    public function test_questions_are_answered_even_in_paused_hours(): void
+    {
+        SubscriptionSchedule::where('provider', 'claude')->update(['grid' => array_fill(0, 7, array_fill(0, 24, ''))]);
+        $this->project->tasks()->first()->update(['builder_id' => $this->droid->id]);
+        Run::create(['droid_id' => $this->droid->id, 'task_id' => $this->project->tasks()->first()->id, 'kind' => 'build', 'status' => 'queued']);
+        $this->ask('chat', 'Where is the theme?');
+
+        $job = $this->claim();
+        $this->assertSame('chat', $job['kind']);
+        $this->assertNull($this->withToken($this->token)->postJson('/api/worker/claim', ['subscriptions' => ['claude-max']])->json('run'), 'builds still wait for a painted hour');
+    }
+
+    public function test_a_question_no_worker_can_take_says_why(): void
+    {
+        $this->withToken($this->token)->postJson('/api/worker/claim', ['subscriptions' => ['claude-team']])->assertOk();
+        $this->ask('chat', 'Where is the theme?');
+
+        $asks = $this->getJson('/factory/state')->json('store.asks');
+        $this->assertStringContainsString("isn't signed in to a free Claude subscription (claude-max)", reset($asks)['why']);
+
+        Subscription::where('slug', 'claude-max')->update(['limited_until' => now()->addHour()]);
+        $asks = $this->getJson('/factory/state')->json('store.asks');
+        $this->assertSame('Every Claude subscription is at its usage limit.', reset($asks)['why']);
+    }
 }

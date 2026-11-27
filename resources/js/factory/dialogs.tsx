@@ -229,7 +229,8 @@ export function AssembleDialog({
                         {ask?.status === 'running'
                             ? `${hr?.unit} ${hr?.name} is looking for candidates…`
                             : store.workers?.online
-                              ? 'Waiting for your worker to pick this up…'
+                              ? (ask?.why ??
+                                'Waiting for your worker to pick this up…')
                               : 'No worker is online. Start php artisan droids:work to get candidates…'}
                     </Shimmer>
                 ) : (

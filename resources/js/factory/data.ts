@@ -94,6 +94,8 @@ type ChatItemBody =
 export type Ask = {
     kind: 'chat' | 'plan' | 'propose' | 'reflect' | 'design' | 'recruit';
     status: 'queued' | 'running';
+    /** Why no worker can take it yet, when queued. */
+    why?: string;
 };
 
 export const PROVIDERS: Record<
