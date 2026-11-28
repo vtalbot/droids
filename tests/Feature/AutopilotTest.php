@@ -4,12 +4,14 @@ namespace Tests\Feature;
 
 use App\Factory\AssignDroid;
 use App\Factory\Autopilot;
+use App\GitHub\RepositorySync;
 use App\Models\ChatMessage;
 use App\Models\Droid;
 use App\Models\Project;
 use App\Models\Run;
 use App\Models\Subscription;
 use App\Models\SubscriptionSchedule;
+use App\Models\Task;
 use App\Models\User;
 use App\Models\Worker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -69,7 +71,7 @@ class AutopilotTest extends TestCase
         $prompt = $this->withToken($this->token)->postJson('/api/worker/claim', ['subscriptions' => ['claude-max']])->json('run.prompt');
         $this->assertStringContainsString('Person: The checkout page.', $prompt);
         $this->assertStringContainsString('You asked earlier: Which page is slow?', $prompt);
-        $this->assertStringNotContainsString('#1 Add dark mode', $prompt);
+        $this->assertStringNotContainsString("#1 Add dark mode\n", $prompt);
     }
 
     public function test_idle_builders_take_ready_cards_preferring_the_cards_engine(): void
@@ -107,6 +109,52 @@ class AutopilotTest extends TestCase
         $this->assertNull($this->project->tasks()->where('number', 3)->value('priority'));
     }
 
+    public function test_builders_wait_for_the_cards_a_card_is_blocked_by(): void
+    {
+        $this->project->update(['auto_triage' => false, 'auto_build' => true]);
+        $this->project->tasks()->where('number', 1)->update(['column' => 'review']);
+        $this->project->tasks()->where('number', 2)->update(['column' => 'ready', 'priority' => 1]);
+        $this->project->tasks()->create(['number' => 3, 'title' => 'Fix login', 'column' => 'ready', 'position' => 3, 'priority' => 4]);
+        Droid::create(['slug' => 'bolt', 'unit' => 'CL-02', 'name' => 'Bolt', 'provider' => 'claude', 'model' => 'Opus 5.5', 'role' => 'Builder', 'project_id' => $this->project->id]);
+
+        $this->patchJson('/factory/projects/droids/tasks/2', ['blocked_by' => [1, 2, 99]])->assertOk()
+            ->assertJsonPath('store.issues.1.blockedBy', [1]);
+        $this->postJson('/factory/projects/droids/tasks/2/assign', ['droid' => 'bolt', 'as' => 'builder'])
+            ->assertStatus(422)->assertJsonPath('message', 'Blocked by #1, which is not merged yet.');
+
+        $this->artisan('droids:autopilot')->assertSuccessful();
+        $this->assertNull($this->project->tasks()->where('number', 2)->value('builder_id'), 'the urgent card waits for #1');
+        $this->assertSame('bolt', $this->project->tasks()->where('number', 3)->first()->builder?->slug, 'the next card goes instead');
+
+        Droid::where('slug', 'bolt')->update(['status' => 'idle', 'task_id' => null]);
+        $this->project->tasks()->where('number', 1)->update(['column' => 'done']);
+        $this->artisan('droids:autopilot')->assertSuccessful();
+        $this->assertSame('bolt', $this->project->tasks()->where('number', 2)->first()->builder?->slug, 'merged: #2 can start');
+
+        $this->patchJson('/factory/projects/droids/tasks/2', ['blocked_by' => []])->assertOk();
+        $this->assertNull($this->project->tasks()->where('number', 2)->value('blocked_by'));
+    }
+
+    public function test_blockers_come_from_issue_text_and_triage(): void
+    {
+        $this->assertSame([12, 14, 3], Task::blockersIn("Some text.\n\nBlocked by #12 and #14\nDepends on: #3, #12"));
+        $this->assertSame([], Task::blockersIn('Fixes #4. See #5.'));
+
+        $this->postJson('/factory/projects/droids/tasks', ['tasks' => [['title' => 'Dark mode colors', 'body' => 'Blocked by #1']]])->assertCreated();
+        $this->assertSame([1], $this->project->tasks()->where('number', 3)->first()->blocked_by);
+
+        app(RepositorySync::class)->upsertIssue($this->project, ['number' => 2, 'id' => 22, 'title' => 'Make it faster', 'state' => 'open', 'body' => 'Depends on #1 and #2', 'labels' => []]);
+        $this->assertSame([1], $this->project->tasks()->where('number', 2)->first()->blocked_by);
+
+        (new Autopilot(app(AssignDroid::class)))->tick();
+        $job = $this->withToken($this->token)->postJson('/api/worker/claim', ['subscriptions' => ['claude-max']])->json('run');
+        $this->assertStringContainsString('Already blocked by: #1', $job['prompt']);
+        $this->assertStringContainsString('"blocked_by"', $job['prompt']);
+        $this->withToken($this->token)->postJson("/api/worker/runs/{$job['id']}/finish", ['status' => 'succeeded', 'summary' => '{"message": "Moved #3 after #2.",
+            "ready": [{"number": 3, "priority": "medium", "criteria": "- Colors", "blocked_by": [2, "x", 3]}], "questions": []}'])->assertOk();
+        $this->assertSame([2], $this->project->tasks()->where('number', 3)->first()->blocked_by);
+    }
+
     public function test_triage_sends_a_question_to_the_crew_droid_that_can_answer_it(): void
     {
         Droid::create(['slug' => 'iris', 'unit' => 'CL-02', 'name' => 'Iris', 'provider' => 'claude', 'model' => 'Sonnet 5.5', 'role' => 'Designer', 'project_id' => $this->project->id]);
@@ -140,7 +188,7 @@ class AutopilotTest extends TestCase
         $prompt = $this->withToken($this->token)->postJson('/api/worker/claim', ['subscriptions' => ['claude-max']])->json('run.prompt');
         $this->assertStringContainsString('You asked earlier the Designer: Where does the toggle go?', $prompt);
         $this->assertStringContainsString('The Designer answered: On #1: in the settings menu', $prompt);
-        $this->assertStringNotContainsString('#2 Make it faster', $prompt, 'the person has not answered #2');
+        $this->assertStringNotContainsString("#2 Make it faster\n", $prompt, 'the person has not answered #2');
 
         // A second question on the same card goes to the person: no loops between droids.
         $id = Run::where('kind', 'triage')->latest('id')->value('id');
@@ -161,7 +209,7 @@ class AutopilotTest extends TestCase
         $this->postJson('/factory/projects/droids/triage')->assertOk()->assertJson(['started' => false, 'message' => 'A triage is already queued or running. These cards are next.']);
         $prompt = $this->withToken($this->token)->postJson('/api/worker/claim', ['subscriptions' => ['claude-max']])->json('run.prompt');
         $this->assertStringContainsString('#1 Add dark mode', $prompt);
-        $this->assertStringNotContainsString('#2 Make it faster', $prompt, 'a droid is already on #2');
+        $this->assertStringNotContainsString("#2 Make it faster\n", $prompt, 'a droid is already on #2');
     }
 
     public function test_autopilot_is_switched_per_project_and_only_the_person_asks_questions(): void

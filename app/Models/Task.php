@@ -27,6 +27,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $question_for the role of the droid the question went to; null for the person
  * @property string|null $answer what that droid answered
  * @property int|null $priority 1 urgent to 4 low, see PRIORITIES
+ * @property list<int>|null $blocked_by numbers of the cards in the project that must be merged first
  */
 class Task extends Model
 {
@@ -50,11 +51,58 @@ class Task extends Model
         return $v === false ? null : $v;
     }
 
+    /**
+     * The card numbers an issue body says this card waits on:
+     * "Blocked by #12", "Depends on #12 and #14", "After #3, #4".
+     *
+     * @return list<int>
+     */
+    public static function blockersIn(?string $body): array
+    {
+        $numbers = [];
+        if (preg_match_all('/\b(?:blocked\s+by|depends\s+on|after)\s*:?\s*((?:#\d+(?:\s*(?:,|and|&)?\s*)?)+)/i', (string) $body, $m)) {
+            foreach ($m[1] as $list) {
+                preg_match_all('/#(\d+)/', $list, $n);
+                $numbers = [...$numbers, ...array_map('intval', $n[1])];
+            }
+        }
+
+        return array_values(array_unique($numbers));
+    }
+
+    /**
+     * The cards blocking this one that are not merged yet (not done).
+     *
+     * @return list<int>
+     */
+    public function openBlockers(): array
+    {
+        if (! $this->blocked_by) {
+            return [];
+        }
+
+        return array_values(array_map('intval', self::where('project_id', $this->project_id)->whereIn('number', $this->blocked_by)
+            ->where('column', '!=', 'done')->orderBy('number')->pluck('number')->all()));
+    }
+
+    /**
+     * Set the blockers, keeping only other cards of the same project.
+     *
+     * @param  list<int>  $numbers
+     */
+    public function blockOn(array $numbers): void
+    {
+        $numbers = array_values(array_filter(array_unique(array_map('intval', $numbers)), fn (int $n) => $n !== $this->number));
+        $known = $numbers ? array_map('intval', self::where('project_id', $this->project_id)->whereIn('number', $numbers)->pluck('number')->all()) : [];
+        sort($known);
+        $this->update(['blocked_by' => $known ?: null]);
+    }
+
     protected $guarded = [];
 
     protected function casts(): array
     {
-        return ['labels' => 'array', 'triaged_at' => 'datetime', 'priority' => 'integer'];
+        return ['labels' => 'array', 'triaged_at' => 'datetime', 'priority' => 'integer', 'blocked_by' => 'array'];
     }
 
     /** @return BelongsTo<Project, $this> */

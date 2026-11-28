@@ -36,6 +36,9 @@ class TaskController extends Controller
                 $feature = $this->featureFor($project, $t);
                 $task = $writer->createIssue($project, $t['title'], $t['labels'] ?? [], $feature?->milestone, $t['body'] ?? null);
                 $task->update(['engine' => $t['engine'] ?? null, 'feature_id' => $feature->id ?? $task->feature_id]);
+                if ($blockers = Task::blockersIn($t['body'] ?? null)) {
+                    $task->blockOn($blockers);
+                }
 
                 return $task->number;
             }, $data['tasks']));
@@ -51,7 +54,7 @@ class TaskController extends Controller
             foreach ($data['tasks'] as $t) {
                 $feature = $this->featureFor($project, $t);
 
-                $project->tasks()->create([
+                $task = $project->tasks()->create([
                     'number' => $next,
                     'title' => $t['title'],
                     'column' => 'backlog',
@@ -60,6 +63,9 @@ class TaskController extends Controller
                     'feature_id' => $feature?->id,
                     'position' => $position++,
                 ]);
+                if ($blockers = Task::blockersIn($t['body'] ?? null)) {
+                    $task->blockOn($blockers);
+                }
                 $numbers[] = $next++;
             }
 
@@ -96,13 +102,18 @@ class TaskController extends Controller
     public function update(Request $request, Project $project, int $number): JsonResponse
     {
         $data = $request->validate([
-            'column' => [Rule::requiredIf(! $request->has('priority')), Rule::in(Task::COLUMNS)],
+            'column' => [Rule::requiredIf(! $request->hasAny(['priority', 'blocked_by'])), Rule::in(Task::COLUMNS)],
             'priority' => ['sometimes', 'nullable', Rule::in(Task::PRIORITIES)],
+            'blocked_by' => ['sometimes', 'nullable', 'array', 'max:20'],
+            'blocked_by.*' => ['integer', 'min:1'],
         ]);
 
         $task = $project->tasks()->where('number', $number)->firstOrFail();
         if (array_key_exists('priority', $data)) {
             $task->update(['priority' => Task::priorityValue($data['priority'])]);
+        }
+        if (array_key_exists('blocked_by', $data)) {
+            $task->blockOn(array_values($data['blocked_by'] ?? []));
         }
         if (isset($data['column'])) {
             $task->update(['column' => $data['column']]);
@@ -127,6 +138,12 @@ class TaskController extends Controller
 
         if ($data['as'] === 'reviewer' && $task->builder_id === $droid->id) {
             return response()->json(['message' => 'A droid cannot review its own work.', 'errors' => ['droid' => ['A droid cannot review its own work.']]], 422);
+        }
+
+        if ($data['as'] === 'builder' && ($open = $task->openBlockers())) {
+            $message = 'Blocked by '.implode(', ', array_map(fn (int $n) => "#{$n}", $open)).', which '.(count($open) === 1 ? 'is' : 'are').' not merged yet.';
+
+            return response()->json(['message' => $message, 'errors' => ['droid' => [$message]]], 422);
         }
 
         $assign($task, $droid, $data['as']);
