@@ -211,6 +211,102 @@ class ReviewTest extends TestCase
         $this->assertTrue(Activity::where('text', 'Asked for changes on PR #12 for #7: it needs you')->exists());
     }
 
+    public function test_a_busy_builder_keeps_its_card_and_gets_the_fix_once_free(): void
+    {
+        $this->project->update(['auto_build' => true]);
+        $other = $this->project->tasks()->create(['number' => 8, 'title' => 'Other card', 'column' => 'progress', 'position' => 2, 'builder_id' => $this->builder->id]);
+        $build = Run::create(['droid_id' => $this->builder->id, 'task_id' => $other->id, 'project_id' => $this->project->id, 'kind' => 'build', 'status' => 'running', 'heartbeat_at' => now()]);
+        $this->builder->update(['status' => 'working', 'task_id' => $other->id]);
+        $this->openPr();
+        $this->assignReviewer();
+        $job = $this->claim(['api.github.com/repos/vtalbot/droids/pulls/12/reviews' => Http::response(['id' => 1])]);
+        $this->finish($job['id'], ['status' => 'succeeded', 'summary' => $this->review('changes', [['path' => 'src/theme.ts', 'line' => 9, 'body' => 'Persist the choice.']])]);
+
+        $this->assertSame('running', $build->fresh()->status, 'the build on #8 goes on');
+        $this->assertSame($other->id, $this->builder->fresh()->task_id);
+        $this->assertSame(0, Run::where('kind', 'fix')->count());
+        $this->assertTrue(Activity::where('text', 'Asked for changes on PR #12, for Cog once it is free')->exists());
+
+        $build->update(['status' => 'succeeded']);
+        $this->builder->update(['status' => 'idle', 'task_id' => null]);
+        $this->artisan('droids:autopilot')->assertSuccessful();
+        $fix = Run::where('kind', 'fix')->sole();
+        $this->assertSame([$this->builder->id, 12], [$fix->droid_id, $fix->pr_number]);
+        $this->assertStringContainsString('- src/theme.ts:9: Persist the choice.', (string) $fix->input);
+
+        // Pushed: the reviewer looks again.
+        $fix->update(['status' => 'succeeded']);
+        $this->builder->update(['status' => 'idle', 'task_id' => null]);
+        $this->reviewer->update(['status' => 'idle', 'task_id' => null]);
+        $this->artisan('droids:autopilot')->assertSuccessful();
+        $this->assertSame(2, Run::where('kind', 'review')->count());
+        $this->assertSame('queued', Run::where('kind', 'review')->latest('id')->value('status'));
+    }
+
+    public function test_the_person_can_send_one_more_round_of_fixes(): void
+    {
+        $this->openPr()->update(['state' => 'changes']);
+        Run::create(['droid_id' => $this->builder->id, 'task_id' => $this->task->id, 'kind' => 'fix', 'status' => 'succeeded']);
+        Run::create(['droid_id' => $this->builder->id, 'task_id' => $this->task->id, 'kind' => 'fix', 'status' => 'succeeded']);
+        Run::create(['droid_id' => $this->reviewer->id, 'task_id' => $this->task->id, 'kind' => 'review', 'status' => 'succeeded', 'summary' => $this->review('changes')]);
+
+        $this->postJson('/factory/projects/droids/tasks/7/fix')->assertOk()->assertJsonPath('message', 'Cog will address the review on PR #12.');
+        $this->assertSame(3, Run::where('kind', 'fix')->count());
+        $this->assertSame('The toggle works.', Run::where('kind', 'fix')->latest('id')->value('input'));
+        $this->postJson('/factory/projects/droids/tasks/7/fix')->assertStatus(422);
+    }
+
+    public function test_the_autopilot_merges_approved_pull_requests_with_passing_checks(): void
+    {
+        $pr = $this->openPr();
+        $pr->update(['state' => 'approved', 'head_sha' => 'abc', 'checks' => [['name' => 'tests', 'state' => 'running']]]);
+        $this->project->update(['auto_merge' => true]);
+        Http::fake([
+            'api.github.com/app/installations/42/access_tokens' => Http::response(['token' => 'ghs_fresh'], 201),
+            'api.github.com/repos/vtalbot/droids/pulls/12/merge' => Http::response(['merged' => true]),
+            'api.github.com/repos/vtalbot/droids/pulls/12' => Http::response(['id' => 99, 'number' => 12, 'title' => 'Add dark mode toggle', 'state' => 'closed', 'merged' => true, 'draft' => false, 'head' => ['ref' => 'droids/7-add-dark-mode-toggle', 'sha' => 'abc'], 'html_url' => 'https://github.com/vtalbot/droids/pull/12', 'body' => 'Closes #7']),
+            'api.github.com/repos/vtalbot/droids/pulls/12/reviews*' => Http::response([]),
+            'api.github.com/repos/vtalbot/droids/commits/abc/check-runs*' => Http::response(['check_runs' => []]),
+        ]);
+
+        $this->artisan('droids:autopilot')->assertSuccessful();
+        Http::assertNotSent(fn (Request $r) => str_ends_with($r->url(), '/merge'));
+
+        $pr->update(['checks' => [['name' => 'tests', 'state' => 'pass']]]);
+        $this->task->update(['blocked_by' => [8]]);
+        $this->project->tasks()->create(['number' => 8, 'title' => 'First', 'column' => 'review', 'position' => 2]);
+        $this->artisan('droids:autopilot')->assertSuccessful();
+        Http::assertNotSent(fn (Request $r) => str_ends_with($r->url(), '/merge'));
+
+        $this->project->tasks()->where('number', 8)->update(['column' => 'done']);
+        $this->artisan('droids:autopilot')->assertSuccessful();
+        Http::assertSent(fn (Request $r) => $r->method() === 'PUT' && str_ends_with($r->url(), '/pulls/12/merge') && $r['sha'] === 'abc');
+        $this->assertSame('done', $this->task->fresh()->column);
+    }
+
+    public function test_cards_go_back_to_triage_and_orphaned_cards_back_to_ready(): void
+    {
+        $this->project->update(['auto_build' => true]);
+        $this->builder->update(['status' => 'working', 'task_id' => $this->task->id]);
+        Run::create(['droid_id' => $this->builder->id, 'task_id' => $this->task->id, 'project_id' => $this->project->id, 'kind' => 'build', 'status' => 'running']);
+        Droid::create(['slug' => 'atlas', 'unit' => 'CL-03', 'name' => 'Atlas', 'provider' => 'claude', 'model' => 'Opus 5.5', 'role' => 'Planner', 'project_id' => $this->project->id]);
+
+        $this->postJson('/factory/projects/droids/tasks/7/triage')->assertOk()->assertJsonPath('message', '#7 is back in Ideas. CL-03 Atlas will triage it next.');
+        $this->task->refresh();
+        $this->assertSame(['backlog', null, null], [$this->task->column, $this->task->builder_id, $this->task->triaged_at]);
+        $this->assertSame(['idle', null], [$this->builder->fresh()->status, $this->builder->fresh()->task_id]);
+        $this->assertSame('cancelled', Run::where('kind', 'build')->value('status'));
+        $this->assertSame(1, Run::where('kind', 'triage')->count());
+
+        // A card left in progress by a builder that moved on goes back to Ready.
+        $orphan = $this->project->tasks()->create(['number' => 9, 'title' => 'Orphan', 'column' => 'progress', 'position' => 3, 'builder_id' => $this->reviewer->id]);
+        $this->artisan('droids:autopilot')->assertSuccessful();
+        $this->assertSame(['ready', null], [$orphan->fresh()->column, $orphan->fresh()->builder_id]);
+
+        $this->openPr();
+        $this->postJson('/factory/projects/droids/tasks/7/triage')->assertStatus(422);
+    }
+
     public function test_comments_outside_the_diff_are_folded_into_the_review_body(): void
     {
         $this->openPr();

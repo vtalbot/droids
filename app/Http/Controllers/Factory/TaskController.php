@@ -3,11 +3,15 @@
 namespace App\Http\Controllers\Factory;
 
 use App\Factory\AssignDroid;
+use App\Factory\Autopilot;
 use App\GitHub\RepositoryWriter;
 use App\Models\Droid;
 use App\Models\Feature;
 use App\Models\Project;
+use App\Models\Run;
 use App\Models\Task;
+use App\Runs\Review;
+use App\Runs\RunQueue;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -149,5 +153,58 @@ class TaskController extends Controller
         $assign($task, $droid, $data['as']);
 
         return $this->state();
+    }
+
+    /** Send a card back to Ideas: its builder stops, and the triage droid looks at it again. */
+    public function retriage(Project $project, int $number, RunQueue $runs, Autopilot $autopilot): JsonResponse
+    {
+        $task = $project->tasks()->where('number', $number)->firstOrFail();
+        if (! in_array($task->column, ['backlog', 'ready', 'progress'], true)) {
+            return response()->json(['message' => 'Only cards not in review yet can go back to triage.'], 422);
+        }
+
+        $builder = $task->builder;
+        if ($builder && $builder->task_id === $task->id) {
+            $runs->release($builder);
+        }
+        Run::where('task_id', $task->id)->whereIn('kind', Run::TASK_KINDS)->whereIn('status', Run::ACTIVE)
+            ->update(['status' => 'cancelled', 'error' => 'Sent back to triage', 'finished_at' => now()]);
+        $task->refresh()->update([
+            'builder_id' => null, 'column' => 'backlog', 'triaged_at' => null,
+            'question' => null, 'question_for' => null, 'answer' => null,
+            'position' => (int) $project->tasks()->where('column', 'backlog')->max('position') + 1,
+        ]);
+        $started = $autopilot->triage($project);
+        $droid = Autopilot::triager($project);
+        $message = $droid
+            ? "#{$task->number} is back in Ideas. ".($started ? "{$droid->unit} {$droid->name} will triage it next." : 'It is in the next triage.')
+            : "#{$task->number} is back in Ideas. Add a Triager or Planner to the crew to triage it.";
+
+        return $this->state(['message' => $message]);
+    }
+
+    /** Send the requested changes on a card's pull request back to its builder, as one more round. */
+    public function fix(Project $project, int $number, RunQueue $runs, Review $review): JsonResponse
+    {
+        $task = $project->tasks()->where('number', $number)->with(['pullRequest', 'builder'])->firstOrFail();
+        $pr = $task->pullRequest;
+        $fail = fn (string $m) => response()->json(['message' => $m], 422);
+        if (! $pr || ! in_array($pr->state, ['changes', 'open', 'approved'], true)) {
+            return $fail('This card has no open pull request.');
+        }
+        if (! $task->builder) {
+            return $fail('Assign a builder to the card first.');
+        }
+        if (RunQueue::busyElsewhere($task->builder, $task)) {
+            return $fail("{$task->builder->name} is busy on another card. Try again when it is free, or unassign it there.");
+        }
+        if (Run::where('task_id', $task->id)->whereIn('kind', Run::TASK_KINDS)->whereIn('status', Run::ACTIVE)->exists()) {
+            return $fail('A droid is already working on this card.');
+        }
+        $last = Run::where('task_id', $task->id)->where('kind', 'review')->where('status', 'succeeded')->latest('id')->first();
+        $feedback = $last ? $review->feedback($last) : "Address the review comments on pull request #{$pr->number}.";
+        $runs->queueFix($task, $pr, $feedback, extraRound: true);
+
+        return $this->state(['message' => "{$task->builder->name} will address the review on PR #{$pr->number}."]);
     }
 }

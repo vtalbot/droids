@@ -58,7 +58,7 @@ class AssignDroid
                 $task->update(['reviewer_id' => $droid->id]);
 
                 // With a pull request open on a linked repo, the review starts now; otherwise when the builder opens one.
-                $queued = $this->runs->queueReview($droid, $task);
+                $queued = $this->runs->queueReview($droid, $task, takeOver: true);
                 if (! $queued && $droid->status === 'idle') {
                     $droid->update([
                         'status' => 'working',

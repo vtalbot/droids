@@ -7,6 +7,7 @@ use App\GitHub\RepositorySync;
 use App\Models\GithubInstallation;
 use App\Models\Project;
 use App\Models\Run;
+use App\Runs\Conversation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -62,6 +63,7 @@ class ProjectController extends Controller
             'name' => ['sometimes', 'required', 'string', 'max:80'],
             'auto_triage' => ['sometimes', 'boolean'],
             'auto_build' => ['sometimes', 'boolean'],
+            'auto_merge' => ['sometimes', 'boolean'],
         ]);
         if (isset($data['name'])) {
             $data['name'] = trim($data['name']);
@@ -73,10 +75,18 @@ class ProjectController extends Controller
     }
 
     /** Look at Ideas again: cards waiting on the person get another triage, which can send the question to a droid. */
-    public function triage(Project $project, Autopilot $autopilot): JsonResponse
+    public function triage(Request $request, Project $project, Autopilot $autopilot): JsonResponse
     {
-        $reset = $project->tasks()->where('column', 'backlog')->whereNull('builder_id')
+        $data = $request->validate(['ready' => ['sometimes', 'boolean']]);
+        $reset = 0;
+        if ($data['ready'] ?? false) {
+            // Ready cards no droid took yet go back to Ideas, to be checked again (blockers, criteria).
+            $reset += $project->tasks()->where('column', 'ready')->whereNull('builder_id')
+                ->update(['column' => 'backlog', 'triaged_at' => null]);
+        }
+        $reset += $project->tasks()->where('column', 'backlog')->whereNull('builder_id')
             ->whereNotNull('question')->whereNull('question_for')->update(['triaged_at' => null]);
+        $reset = max($reset, Conversation::triageCandidates($project)->count());
         $started = $autopilot->triage($project);
         $droid = Autopilot::triager($project);
         $running = Run::where('topic', "triage:{$project->slug}")->whereIn('status', Run::ACTIVE)->exists();

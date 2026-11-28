@@ -49,7 +49,7 @@ Schedule::command('droids:sweep')->everyFiveMinutes();
 // Projects with autopilot on: triage Ideas, hand Ready cards to idle builders.
 Artisan::command('droids:autopilot', function (Autopilot $autopilot) {
     $done = $autopilot->tick();
-    $this->info("Started {$done['triage']} triage run(s), assigned {$done['assigned']} card(s), {$done['unblock']} unblock look(s).");
+    $this->info("Started {$done['triage']} triage run(s), assigned {$done['assigned']} card(s), {$done['unblock']} unblock look(s), {$done['followed']} review follow-up(s).");
 })->purpose('Triage Ideas and give Ready cards to idle builders on projects that turned it on');
 
 Schedule::command('droids:autopilot')->everyMinute()->withoutOverlapping();

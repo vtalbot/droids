@@ -1,0 +1,21 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('projects', function (Blueprint $table) {
+            // The autopilot merges approved pull requests with passing checks.
+            $table->boolean('auto_merge')->default(false)->after('auto_build');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('projects', fn (Blueprint $table) => $table->dropColumn('auto_merge'));
+    }
+};

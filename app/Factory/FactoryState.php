@@ -175,6 +175,7 @@ class FactoryState
             'linked' => $p->isLinked(),
             'autoTriage' => $p->auto_triage,
             'autoBuild' => $p->auto_build,
+            'autoMerge' => $p->auto_merge,
             'synced' => $p->synced_at?->diffForHumans(),
             'milestone' => $milestone->name ?? 'No milestone',
             'due' => $milestone?->due_on?->format('M j') ?? '',
