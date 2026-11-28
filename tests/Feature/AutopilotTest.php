@@ -156,7 +156,9 @@ class AutopilotTest extends TestCase
         $this->project->tasks()->where('number', 2)->update(['question_for' => 'Designer']);
         $this->assertSame(0, Run::count());
 
-        $this->postJson('/factory/projects/droids/triage')->assertOk()->assertJson(['reset' => 1, 'started' => true]);
+        $this->postJson('/factory/projects/droids/triage')->assertOk()->assertJson(['reset' => 1, 'started' => true, 'message' => 'CL-01 Atlas will triage 1 card as soon as a worker picks it up.'])
+            ->assertJsonPath('store.asks.triage:droids.status', 'queued');
+        $this->postJson('/factory/projects/droids/triage')->assertOk()->assertJson(['started' => false, 'message' => 'A triage is already queued or running. These cards are next.']);
         $prompt = $this->withToken($this->token)->postJson('/api/worker/claim', ['subscriptions' => ['claude-max']])->json('run.prompt');
         $this->assertStringContainsString('#1 Add dark mode', $prompt);
         $this->assertStringNotContainsString('#2 Make it faster', $prompt, 'a droid is already on #2');

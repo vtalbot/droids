@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
     CheckIcon,
+    Loader2Icon,
     MinusIcon,
     PlusIcon,
     SearchCheckIcon,
@@ -441,7 +442,7 @@ function Autopilot({
     const planner =
         crew.find((d) => d.role === 'Triager') ??
         crew.find((d) => d.role === 'Planner') ??
-        crew[0];
+        [...crew].sort((a, b) => a.unit.localeCompare(b.unit))[0];
     const waiting = store.issues.filter(
         (i) =>
             i.project === pid &&
@@ -449,12 +450,18 @@ function Autopilot({
             i.question &&
             !i.questionFor,
     ).length;
-    const retriage = () =>
-        void save(
+    const retriage = async () => {
+        const res = await save(
             'POST',
             `/factory/projects/${encodeURIComponent(pid)}/triage`,
             {},
         );
+        if (typeof res?.message === 'string') toast.info(res.message);
+    };
+    const triaging = store.asks?.[`triage:${pid}`];
+    const answering = Object.entries(store.asks ?? {}).filter(([k]) =>
+        k.startsWith(`answer:${pid}:`),
+    ).length;
     const builders = crew.filter((d) => d.role === 'Builder').length;
     const toggle = (key: 'auto_triage' | 'auto_build', v: boolean) =>
         void save('PATCH', `/factory/projects/${encodeURIComponent(pid)}`, {
@@ -477,7 +484,19 @@ function Autopilot({
                     </span>
                 </span>
             </label>
-            {planner && waiting > 0 && (
+            {planner && (triaging || answering > 0) && (
+                <p className="flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                    <Loader2Icon className="size-3.5 animate-spin" />
+                    {triaging
+                        ? triaging.status === 'running'
+                            ? `${planner.unit} ${planner.name} is triaging Ideas now.`
+                            : `Triage is queued for ${planner.unit} ${planner.name}. ${triaging.why ?? 'It starts when a worker is online and picks it up.'}`
+                        : ''}
+                    {answering > 0 &&
+                        ` ${answering === 1 ? '1 droid is' : `${answering} droids are`} answering a triage question.`}
+                </p>
+            )}
+            {planner && waiting > 0 && !triaging && (
                 <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
                     <span className="text-muted-foreground">
                         {waiting === 1

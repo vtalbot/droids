@@ -6,6 +6,7 @@ use App\Factory\Autopilot;
 use App\GitHub\RepositorySync;
 use App\Models\GithubInstallation;
 use App\Models\Project;
+use App\Models\Run;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -77,7 +78,15 @@ class ProjectController extends Controller
         $reset = $project->tasks()->where('column', 'backlog')->whereNull('builder_id')
             ->whereNotNull('question')->whereNull('question_for')->update(['triaged_at' => null]);
         $started = $autopilot->triage($project);
+        $droid = Autopilot::triager($project);
+        $running = Run::where('topic', "triage:{$project->slug}")->whereIn('status', Run::ACTIVE)->exists();
+        $message = match (true) {
+            ! $droid => 'Add a Triager or Planner droid to the crew first.',
+            $started => "{$droid->unit} {$droid->name} will triage ".($reset === 1 ? '1 card' : "{$reset} cards").' as soon as a worker picks it up.',
+            $running => 'A triage is already queued or running. These cards are next.',
+            default => 'Nothing in Ideas needs triage right now.',
+        };
 
-        return $this->state(['reset' => $reset, 'started' => $started]);
+        return $this->state(['reset' => $reset, 'started' => $started, 'message' => $message]);
     }
 }

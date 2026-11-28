@@ -150,7 +150,8 @@ export type Ask = {
         | 'recruit'
         | 'triage'
         | 'suggest'
-        | 'unblock';
+        | 'unblock'
+        | 'answer';
     status: 'queued' | 'running';
     /** Why no worker can take it yet, when queued. */
     why?: string;
