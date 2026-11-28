@@ -70,6 +70,7 @@ class FactoryState
                 'builder' => $t->builder_id ? $droidSlugs[$t->builder_id] : null,
                 'reviewer' => $t->reviewer_id ? $droidSlugs[$t->reviewer_id] : null,
                 'engine' => $t->engine,
+                'blockedBy' => $t->blocked_by ?: null,
             ], fn ($v) => $v !== null))->values(),
             'prs' => $this->pullRequests($slugs),
             'roadmap' => $projects->mapWithKeys(fn (Project $p) => [$p->slug => $p->milestones->map(fn (Milestone $m) => $this->milestone($m))->values()]),

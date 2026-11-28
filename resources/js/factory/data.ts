@@ -58,6 +58,8 @@ export type Issue = {
     question?: string | null;
     /** The crew role the question went to, or null when it waits on the person. */
     questionFor?: string | null;
+    /** Card numbers in the same project that must be merged before a droid builds this one. */
+    blockedBy?: number[];
     /** Set by the triage droid or the person; builders take the highest first. */
     priority?: Priority;
 };
@@ -538,3 +540,14 @@ export const DEPLOY_STEPS: {
     },
     { key: 'live', label: 'Live', from: ['deployment.succeeded'] },
 ];
+
+/** The cards blocking an issue that are not merged yet. */
+export function openBlockers(
+    issues: Issue[],
+    i: Pick<Issue, 'project' | 'blockedBy'>,
+): number[] {
+    return (i.blockedBy ?? []).filter((n) => {
+        const b = issues.find((x) => x.project === i.project && x.n === n);
+        return b && b.col !== 'done';
+    });
+}

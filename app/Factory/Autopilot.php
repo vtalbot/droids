@@ -117,6 +117,9 @@ class Autopilot
         $cards = $project->tasks()->where('column', 'ready')->whereNull('builder_id')->orderByRaw(Task::BY_PRIORITY)->orderBy('position')->get();
         foreach ($cards as $task) {
             /** @var Task $task */
+            if ($task->openBlockers()) {
+                continue; // waits until the cards it depends on are merged
+            }
             $droid = $this->builderFor($task, $idle);
             if (! $droid) {
                 break;

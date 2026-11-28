@@ -35,6 +35,7 @@ class Conversation
     private const ACTION_RULES = [
         'You cannot create anything yourself: milestones and issues you put in the JSON appear under your message as cards, with buttons the person clicks to create them on the board and on GitHub. So never say you created something. Say it is ready below and that one click creates it.',
         'A draft can name the milestone it belongs to in "milestone", either an existing one or one you propose in the same answer, and a feature of that milestone in "feature".',
+        'When a draft cannot start until an existing card is merged, end its body with a line like "Blocked by #12". Builders wait for that card.',
         'Put up to three short follow-ups the person is likely to want next in "next", written as what they would type, such as "Draft the issues for this milestone". Leave it empty when nothing obvious follows.',
     ];
 
@@ -341,7 +342,7 @@ class Conversation
             'propose' => '{"message": "...", "reasoning": "...", "proposals": [{"kind": "feature" or "milestone", "title": "...", "why": "...", "effort": "...", "engine": "claude" or "codex"}], "next": ["..."]}',
             'reflect' => '{"message": "...", "reasoning": "...", "good": ["..."], "improve": ["..."], "rules": ["..."]}',
             'unblock' => '{"message": "...", "reasoning": "...", "action": "retry" or "model" or "ask", "model": "..." or null}',
-            'triage' => '{"message": "...", "reasoning": "...", "ready": [{"number": 12, "priority": "high", "criteria": "- ...\\n- ..."}], "questions": [{"number": 13, "priority": "medium", "to": "person" or a crew role, "question": "..."}]}',
+            'triage' => '{"message": "...", "reasoning": "...", "ready": [{"number": 12, "priority": "high", "criteria": "- ...\\n- ...", "blocked_by": [9]}], "questions": [{"number": 13, "priority": "medium", "to": "person" or a crew role, "question": "..."}]}',
             'recruit' => '{"message": "...", "reasoning": "...", "candidates": [{"name": "...", "role": "...", "provider": "claude" or "codex", "model": "...", "pitch": "...", "why": "...", "instructions": "..."}]}',
             default => '{"message": "...", "reasoning": "..."}',
         };
@@ -705,7 +706,9 @@ class Conversation
             ->whereNotIn('role', ['HR', 'Triager', 'Mechanic'])->orderBy('unit')->get()->unique('role');
         $roles = $helpers->map(fn (Droid $d) => "{$d->role} ({$d->name})")->implode(', ');
         $cards = [];
+        $numbers = [];
         foreach (self::triageCandidates($project) as $t) {
+            $numbers[] = $t->number;
             $body = $project->isLinked() ? rescue(fn () => $this->github->issueBody($project, $t->number), '', false) : '';
             $cards = [...$cards, '', "#{$t->number} {$t->title}".($t->labels ? ' ['.implode(', ', $t->labels).']' : '').($t->priority ? " (priority set by the person: {$t->priorityName()})" : ''),
                 $body !== '' ? Str::limit($body, 3000) : '(no description)'];
@@ -715,7 +718,12 @@ class Conversation
             if ($t->answer) {
                 $cards[] = "The {$t->question_for} answered: ".Str::limit($t->answer, 1500);
             }
+            if ($t->blocked_by) {
+                $cards[] = 'Already blocked by: '.implode(', ', array_map(fn (int $n) => "#{$n}", $t->blocked_by));
+            }
         }
+        $others = $project->tasks()->where('column', '!=', 'done')->whereNotIn('number', $numbers)->orderBy('number')->limit(60)->get(['number', 'title', 'column'])
+            ->map(fn (Task $t) => "#{$t->number} {$t->title} ({$t->column})")->all();
 
         return [
             "You triage the Ideas column of the project {$project->name} ({$project->repo}). A card you mark ready moves to \"Ready for droids\", where a builder droid picks it up and builds it alone, with no one to ask.",
@@ -724,6 +732,7 @@ class Conversation
             'The cards to triage:',
             ...$cards,
             '',
+            ...($others ? ['Other open cards on the board:', ...$others, ''] : []),
             'For each card, read the code it touches, then decide:',
             '- Ready: a builder could finish it in under a day without guessing. Put it in "ready" with acceptance criteria as a short Markdown list, which is added to the issue.',
             '- Not ready: something is missing. Put one short, specific question in "questions". Do not ask what you can find in the code yourself.',
@@ -731,6 +740,7 @@ class Conversation
                 "  Send it to the droid who can answer from the code, the design or the plan: put its role in \"to\". On the crew: {$roles}. The Planner knows scope and the plan, the Designer the screens and flows, a Builder or Reviewer the technical approach, a Copywriter names and wording.",
                 '  Put "person" in "to" only for what only the person can decide: business rules, pricing, priorities between goals, taste, or anything a droid answered with "only you can decide".',
             ] : ['  Put "person" in "to": there is no other droid on the crew to ask.']),
+            'When a card cannot be built until another open card is merged (it builds on its code, its data or its screens), list those card numbers in "blocked_by". It can still be ready: builders wait for the cards it depends on. Leave it empty for cards that only touch the same area.',
             'Give every card a "priority": urgent (broken in production or blocking other work), high (on the active milestone\'s critical path), medium (planned work), or low (nice to have). Builders take the highest priority first. Keep a priority the person set unless the discussion changes it.',
             'A card you asked about before is ready once the conversation or the droid you asked answers it.',
             'In "message", tell the person in a few sentences which cards you moved, which questions you sent to which droid, and what you need from them, by issue number. They answer in this discussion.',
@@ -751,6 +761,9 @@ class Conversation
                 rescue(fn () => $this->github->appendToIssue($project, $task->number, "## Acceptance criteria\n\n{$criteria}"), null, false);
             }
             $task->update(['column' => 'ready', 'triaged_at' => now(), 'question' => null, 'priority' => $this->priorityFor($task, $r), 'position' => (int) $project->tasks()->where('column', 'ready')->max('position') + 1]);
+            if (is_array($r['blocked_by'] ?? null) && $r['blocked_by'] !== []) {
+                $task->blockOn(array_values(array_map('intval', array_filter($r['blocked_by'], 'is_numeric'))));
+            }
         }
         foreach (is_array($data['questions'] ?? null) ? $data['questions'] : [] as $q) {
             $task = is_array($q) && is_numeric($q['number'] ?? null) ? $candidates->pull((int) $q['number']) : null;

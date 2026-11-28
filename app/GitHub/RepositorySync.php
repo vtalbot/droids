@@ -85,6 +85,10 @@ class RepositorySync
             $task->column = 'backlog'; // reopened
         }
 
+        // "Blocked by #12" in the issue body links the cards; an edit without it keeps links set here.
+        if (($blockers = array_values(array_diff(Task::blockersIn($issue['body'] ?? null), [(int) $issue['number']]))) !== []) {
+            $task->blocked_by = $blockers;
+        }
         $task->fill([
             'title' => $issue['title'],
             'labels' => array_values(array_map(fn ($l) => is_array($l) ? $l['name'] : $l, $issue['labels'] ?? [])),

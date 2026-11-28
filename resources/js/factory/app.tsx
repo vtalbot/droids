@@ -4,6 +4,7 @@ import {
     BotIcon,
     Columns3Icon,
     LayoutGridIcon,
+    LockIcon,
     MessageSquareIcon,
     PlusIcon,
     UserPlusIcon,
@@ -87,6 +88,7 @@ import { GithubMark } from '@/factory/logos';
 export { GithubMark };
 import {
     COLS,
+    openBlockers,
     PRIORITIES,
     priorityRank,
     PROVIDERS,
@@ -882,6 +884,7 @@ export default function FactoryApp({
                         openChat={openChat}
                         bump={bump}
                         proj={proj}
+                        openTask={setTaskKey}
                     />
                     <AddSubscriptionDialog
                         open={addSubOpen}
@@ -1820,6 +1823,20 @@ function Board({
                                         >
                                             {i.title}
                                         </button>
+                                        {openBlockers(store.issues, i).length >
+                                            0 &&
+                                            i.col !== 'done' && (
+                                                <p className="flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+                                                    <LockIcon className="size-3" />
+                                                    Blocked by{' '}
+                                                    {openBlockers(
+                                                        store.issues,
+                                                        i,
+                                                    )
+                                                        .map((n) => `#${n}`)
+                                                        .join(', ')}
+                                                </p>
+                                            )}
                                         {i.question && i.col === 'backlog' && (
                                             <p className="rounded-md bg-needs/10 px-2 py-1 text-xs text-needs">
                                                 {i.questionFor

@@ -9,6 +9,7 @@ import {
     GitPullRequestClosedIcon,
     GitPullRequestIcon,
     LoaderCircleIcon,
+    LockIcon,
     MessageSquareIcon,
     RotateCwIcon,
     XCircleIcon,
@@ -23,6 +24,7 @@ import {
 } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import {
     Select,
@@ -33,6 +35,7 @@ import {
 } from '@/components/ui/select';
 import {
     COLS,
+    openBlockers,
     PRIORITIES,
     PROVIDERS,
     type CheckState,
@@ -151,6 +154,7 @@ export function TaskSheet({
     openChat,
     bump,
     proj,
+    openTask,
 }: {
     store: Store;
     issueKey: string | null;
@@ -158,6 +162,7 @@ export function TaskSheet({
     openChat: (id: string) => void;
     bump: () => void;
     proj: (id: string) => Store['projects'][number];
+    openTask?: (key: string) => void;
 }) {
     const [pid, n] = issueKey ? issueKey.split(':') : ['', ''];
     const i = store.issues.find((x) => x.project === pid && x.n === +n);
@@ -201,6 +206,20 @@ export function TaskSheet({
             'PATCH',
             `/factory/projects/${encodeURIComponent(i.project)}/tasks/${i.n}`,
             { priority },
+        );
+    };
+    const blockOn = (text: string) => {
+        if (!i) return;
+        const numbers = [
+            ...new Set(
+                (text.match(/\d+/g) ?? []).map(Number).filter((x) => x !== i.n),
+            ),
+        ];
+        if (numbers.join() === (i.blockedBy ?? []).join()) return;
+        void save(
+            'PATCH',
+            `/factory/projects/${encodeURIComponent(i.project)}/tasks/${i.n}`,
+            { blocked_by: numbers },
         );
     };
     const pullUrl = (action: string) =>
@@ -361,6 +380,62 @@ export function TaskSheet({
                                         ))}
                                     </SelectContent>
                                 </Select>
+                                <span className="text-muted-foreground">
+                                    Blocked by
+                                </span>
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                    {(i.blockedBy ?? []).map((n) => {
+                                        const bi = store.issues.find(
+                                            (x) =>
+                                                x.project === i.project &&
+                                                x.n === n,
+                                        );
+                                        const open = openBlockers(
+                                            store.issues,
+                                            {
+                                                project: i.project,
+                                                blockedBy: [n],
+                                            },
+                                        ).length;
+                                        return (
+                                            <button
+                                                key={n}
+                                                title={bi?.title}
+                                                onClick={() =>
+                                                    openTask?.(
+                                                        `${i.project}:${n}`,
+                                                    )
+                                                }
+                                                className={cn(
+                                                    'flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs hover:bg-accent',
+                                                    !open &&
+                                                        'text-muted-foreground line-through',
+                                                )}
+                                            >
+                                                {open ? (
+                                                    <LockIcon className="size-3" />
+                                                ) : (
+                                                    <CheckCircle2Icon className="size-3" />
+                                                )}
+                                                #{n}
+                                            </button>
+                                        );
+                                    })}
+                                    <Input
+                                        key={(i.blockedBy ?? []).join()}
+                                        className="h-7 w-32 text-xs"
+                                        aria-label="Blocked by"
+                                        placeholder="#12, #14"
+                                        defaultValue={(i.blockedBy ?? [])
+                                            .map((x) => `#${x}`)
+                                            .join(', ')}
+                                        onBlur={(e) => blockOn(e.target.value)}
+                                        onKeyDown={(e) =>
+                                            e.key === 'Enter' &&
+                                            blockOn(e.currentTarget.value)
+                                        }
+                                    />
+                                </div>
                                 {[
                                     ['Builder', b],
                                     ['Reviewer', r],
