@@ -2,12 +2,15 @@
 
 namespace App\Factory;
 
+use App\GitHub\RepositoryWriter;
 use App\Http\Controllers\Factory\DroidController;
+use App\Models\Activity;
 use App\Models\Droid;
 use App\Models\Project;
 use App\Models\Run;
 use App\Models\Task;
 use App\Runs\Conversation;
+use App\Runs\Review;
 use App\Runs\RunQueue;
 use Illuminate\Support\Collection;
 
@@ -17,18 +20,26 @@ use Illuminate\Support\Collection;
  */
 class Autopilot
 {
-    public function __construct(private AssignDroid $assign) {}
+    public function __construct(
+        private AssignDroid $assign,
+        private RunQueue $runs,
+        private Review $review,
+        private RepositoryWriter $writer,
+    ) {}
 
     /** Times a Mechanic looks at the same task before leaving it to the person. */
     public const UNBLOCK_TRIES = 2;
 
-    /** @return array{triage: int, assigned: int, unblock: int} what it started */
+    /** @return array{triage: int, assigned: int, unblock: int, followed: int} what it started */
     public function tick(): array
     {
-        $out = ['triage' => 0, 'assigned' => 0, 'unblock' => $this->unblock()];
-        foreach (Project::where('auto_triage', true)->orWhere('auto_build', true)->get() as $project) {
+        $out = ['triage' => 0, 'assigned' => 0, 'unblock' => $this->unblock(), 'followed' => 0];
+        foreach (Project::where('auto_triage', true)->orWhere('auto_build', true)->orWhere('auto_merge', true)->get() as $project) {
             if ($project->auto_triage && $this->triage($project)) {
                 $out['triage']++;
+            }
+            if ($project->auto_build || $project->auto_merge) {
+                $out['followed'] += $this->followUp($project);
             }
             if ($project->auto_build) {
                 $out['assigned'] += $this->build($project);
@@ -103,6 +114,103 @@ class Autopilot
         ]);
 
         return true;
+    }
+
+    /**
+     * Keep cards moving after the build: put cards whose builder moved on back in
+     * Ready, send requested changes back to the builder, ask for a new review once
+     * the fixes are pushed, and merge approved pull requests when the project allows it.
+     */
+    public function followUp(Project $project): int
+    {
+        $done = 0;
+        $active = fn (Task $t) => Run::where('task_id', $t->id)->whereIn('kind', Run::TASK_KINDS)->whereIn('status', Run::ACTIVE)->exists();
+
+        if ($project->auto_build) {
+            foreach ($project->tasks()->where('column', 'progress')->whereNotNull('builder_id')->with('builder')->get() as $task) {
+                /** @var Task $task */
+                if ($task->builder?->task_id !== $task->id && ! $active($task)) {
+                    $task->update(['builder_id' => null, 'column' => 'ready']);
+                    $done++;
+                }
+            }
+        }
+        if (! $project->isLinked()) {
+            return $done;
+        }
+
+        foreach ($project->tasks()->where('column', 'review')->with(['pullRequest', 'builder', 'reviewer'])->get() as $task) {
+            /** @var Task $task */
+            $pr = $task->pullRequest;
+            if (! $pr || $active($task)) {
+                continue;
+            }
+            $lastReview = Run::where('task_id', $task->id)->where('kind', 'review')->where('status', 'succeeded')->latest('id')->first();
+            $lastWork = Run::where('task_id', $task->id)->whereIn('kind', ['build', 'fix'])->where('status', 'succeeded')->latest('id')->first();
+            $fixedSince = $lastWork && (! $lastReview || $lastWork->id > $lastReview->id);
+
+            if ($project->auto_build && in_array($pr->state, ['changes', 'open'], true) && $fixedSince && ($lastReview || $pr->state === 'open')) {
+                $reviewer = $this->freeReviewer($project, $task);
+                if ($reviewer && $this->runs->queueReview($reviewer, $task)) {
+                    $done++;
+                }
+            } elseif ($project->auto_build && $pr->state === 'changes') {
+                $this->freeBuilder($project, $task);
+                $feedback = $lastReview ? $this->review->feedback($lastReview)
+                    : "A reviewer asked for changes on pull request #{$pr->number}. Read its review comments on GitHub and address them.";
+                if ($this->runs->queueFix($task->fresh() ?? $task, $pr, $feedback)) {
+                    $done++;
+                }
+            } elseif ($project->auto_merge && $pr->state === 'approved' && $this->mergeable($task)) {
+                try {
+                    $this->writer->merge($project, $pr);
+                    $by = $task->reviewer ?? $task->builder;
+                    if ($by) {
+                        Activity::create(['droid_id' => $by->id, 'text' => "Merged PR #{$pr->number} for #{$task->number}"]);
+                    }
+                    $done++;
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+            }
+        }
+
+        return $done;
+    }
+
+    /** Approved, every check passed, and nothing it is blocked by is still open. */
+    private function mergeable(Task $task): bool
+    {
+        $states = array_column($task->pullRequest->checks ?? [], 'state');
+
+        return ! array_intersect($states, ['fail', 'running', 'queued', 'pending']) && ! $task->openBlockers();
+    }
+
+    /** The card's reviewer, or an idle Reviewer on the crew when it has none or that one is gone. */
+    private function freeReviewer(Project $project, Task $task): ?Droid
+    {
+        if ($task->reviewer) {
+            return $task->reviewer;
+        }
+        $reviewer = Droid::where('project_id', $project->id)->where('role', 'Reviewer')->where('status', 'idle')->whereNull('task_id')
+            ->when($task->builder_id, fn ($q) => $q->whereKeyNot($task->builder_id))->orderBy('unit')->first();
+        if ($reviewer) {
+            $task->update(['reviewer_id' => $reviewer->id]);
+        }
+
+        return $reviewer;
+    }
+
+    /** Give the card an idle builder when its own was removed. */
+    private function freeBuilder(Project $project, Task $task): void
+    {
+        if ($task->builder) {
+            return;
+        }
+        $idle = Droid::where('project_id', $project->id)->whereIn('role', DroidController::BUILDING_ROLES)->where('status', 'idle')->whereNull('task_id')->orderBy('unit')->get();
+        if ($droid = $this->builderFor($task, $idle)) {
+            $task->update(['builder_id' => $droid->id]);
+        }
     }
 
     /** Give Ready cards to the project's idle builders, highest priority first, the card's engine first. */

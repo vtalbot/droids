@@ -92,9 +92,17 @@ class Review
         $this->record($task->pullRequest, $droid->unit, $verdict);
         $this->memory->remember($task->project, $droid, Memory::facts($data['remember'] ?? null));
 
-        $notes = array_map(fn (array $c) => "- {$c['path']}:{$c['line']}: {$c['body']}", $comments);
+        return ['state' => $verdict, 'feedback' => $this->feedback($run)];
+    }
 
-        return ['state' => $verdict, 'feedback' => trim($summary."\n\n".implode("\n", $notes))];
+    /** What a review run asked the builder to change: its summary and line comments. */
+    public function feedback(Run $run): string
+    {
+        $data = $this->decode((string) $run->summary);
+        $summary = is_string($data['summary'] ?? null) ? trim($data['summary']) : trim((string) $run->summary);
+        $notes = array_map(fn (array $c) => "- {$c['path']}:{$c['line']}: {$c['body']}", $this->comments($data['comments'] ?? null));
+
+        return trim(Str::limit($summary, 30000)."\n\n".implode("\n", $notes));
     }
 
     /** @param list<array{path: string, line: int, body: string}> $comments */

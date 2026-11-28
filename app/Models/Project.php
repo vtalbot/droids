@@ -28,6 +28,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $resend_domain_id
  * @property bool $auto_triage the project's Planner triages the Ideas column
  * @property bool $auto_build idle builders on the project take cards from Ready for droids
+ * @property bool $auto_merge the autopilot merges approved pull requests with passing checks
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -45,6 +46,7 @@ class Project extends Model
             'memory_updated_at' => 'datetime',
             'auto_triage' => 'boolean',
             'auto_build' => 'boolean',
+            'auto_merge' => 'boolean',
         ];
     }
 

@@ -22,6 +22,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::patch('projects/{project:slug}', [Factory\ProjectController::class, 'update'])->name('projects.update');
         Route::post('projects/{project:slug}/tasks', [Factory\TaskController::class, 'store'])->name('tasks.store');
         Route::patch('projects/{project:slug}/tasks/{number}', [Factory\TaskController::class, 'update'])->whereNumber('number')->name('tasks.update');
+        Route::post('projects/{project:slug}/tasks/{number}/triage', [Factory\TaskController::class, 'retriage'])->whereNumber('number')->name('tasks.triage');
+        Route::post('projects/{project:slug}/tasks/{number}/fix', [Factory\TaskController::class, 'fix'])->whereNumber('number')->name('tasks.fix');
         Route::post('projects/{project:slug}/tasks/{number}/assign', [Factory\TaskController::class, 'assign'])->whereNumber('number')->name('tasks.assign');
         Route::post('projects/{project:slug}/milestones', [Factory\RoadmapController::class, 'storeMilestone'])->name('milestones.store');
         Route::post('milestones/{milestone}/features', [Factory\RoadmapController::class, 'storeFeature'])->name('features.store');

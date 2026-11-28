@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Factory\AssignDroid;
 use App\Factory\Autopilot;
 use App\GitHub\RepositorySync;
 use App\Models\ChatMessage;
@@ -61,7 +60,7 @@ class AutopilotTest extends TestCase
         $chat = $this->getJson('/factory/state')->json('store.chats')['discuss:droids'];
         $this->assertSame('Moved #1. For #2: which page is slow?', end($chat)['text']);
 
-        (new Autopilot(app(AssignDroid::class)))->tick();
+        app(Autopilot::class)->tick();
         $this->assertSame(1, Run::count(), 'nothing new to triage');
 
         $this->travel(1)->minutes();
@@ -146,7 +145,7 @@ class AutopilotTest extends TestCase
         app(RepositorySync::class)->upsertIssue($this->project, ['number' => 2, 'id' => 22, 'title' => 'Make it faster', 'state' => 'open', 'body' => 'Depends on #1 and #2', 'labels' => []]);
         $this->assertSame([1], $this->project->tasks()->where('number', 2)->first()->blocked_by);
 
-        (new Autopilot(app(AssignDroid::class)))->tick();
+        app(Autopilot::class)->tick();
         $job = $this->withToken($this->token)->postJson('/api/worker/claim', ['subscriptions' => ['claude-max']])->json('run');
         $this->assertStringContainsString('Already blocked by: #1', $job['prompt']);
         $this->assertStringContainsString('"blocked_by"', $job['prompt']);
@@ -158,7 +157,7 @@ class AutopilotTest extends TestCase
     public function test_triage_sends_a_question_to_the_crew_droid_that_can_answer_it(): void
     {
         Droid::create(['slug' => 'iris', 'unit' => 'CL-02', 'name' => 'Iris', 'provider' => 'claude', 'model' => 'Sonnet 5.5', 'role' => 'Designer', 'project_id' => $this->project->id]);
-        (new Autopilot(app(AssignDroid::class)))->tick();
+        app(Autopilot::class)->tick();
         $job = $this->withToken($this->token)->postJson('/api/worker/claim', ['subscriptions' => ['claude-max']])->json('run');
         $this->assertStringContainsString('Designer (Iris)', $job['prompt']);
         $this->assertStringContainsString('"to"', $job['prompt']);
@@ -184,7 +183,7 @@ class AutopilotTest extends TestCase
         $chat = $this->getJson('/factory/state')->json('store.chats')['discuss:droids'];
         $this->assertSame('On #1: in the settings menu, under Appearance.', end($chat)['text']);
 
-        (new Autopilot(app(AssignDroid::class)))->tick();
+        app(Autopilot::class)->tick();
         $prompt = $this->withToken($this->token)->postJson('/api/worker/claim', ['subscriptions' => ['claude-max']])->json('run.prompt');
         $this->assertStringContainsString('You asked earlier the Designer: Where does the toggle go?', $prompt);
         $this->assertStringContainsString('The Designer answered: On #1: in the settings menu', $prompt);
@@ -210,6 +209,13 @@ class AutopilotTest extends TestCase
         $prompt = $this->withToken($this->token)->postJson('/api/worker/claim', ['subscriptions' => ['claude-max']])->json('run.prompt');
         $this->assertStringContainsString('#1 Add dark mode', $prompt);
         $this->assertStringNotContainsString("#2 Make it faster\n", $prompt, 'a droid is already on #2');
+
+        // Ready cards no droid took go back through triage on request.
+        Run::query()->update(['status' => 'succeeded']);
+        $this->project->tasks()->create(['number' => 3, 'title' => 'Fix login', 'column' => 'ready', 'position' => 3]);
+        $this->postJson('/factory/projects/droids/triage', ['ready' => true])->assertOk()->assertJson(['started' => true]);
+        $this->assertSame('backlog', $this->project->tasks()->where('number', 3)->value('column'));
+        $this->assertStringContainsString("#3 Fix login\n", (string) Run::where('kind', 'triage')->latest('id')->first()->input.$this->withToken($this->token)->postJson('/api/worker/claim', ['subscriptions' => ['claude-max']])->json('run.prompt'));
     }
 
     public function test_autopilot_is_switched_per_project_and_only_the_person_asks_questions(): void

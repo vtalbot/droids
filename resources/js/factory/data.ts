@@ -15,6 +15,8 @@ export type Project = {
     autoTriage?: boolean;
     /** Idle builders on the project take cards from Ready for droids. */
     autoBuild?: boolean;
+    /** The autopilot merges approved pull requests whose checks pass. */
+    autoMerge?: boolean;
     milestone: string;
     due: string;
     done: number;

@@ -450,11 +450,17 @@ function Autopilot({
             i.question &&
             !i.questionFor,
     ).length;
-    const retriage = async () => {
+    const ideas = store.issues.filter(
+        (i) => i.project === pid && i.col === 'backlog' && !i.builder,
+    ).length;
+    const readyCards = store.issues.filter(
+        (i) => i.project === pid && i.col === 'ready' && !i.builder,
+    ).length;
+    const retriage = async (ready = false) => {
         const res = await save(
             'POST',
             `/factory/projects/${encodeURIComponent(pid)}/triage`,
-            {},
+            ready ? { ready: true } : {},
         );
         if (typeof res?.message === 'string') toast.info(res.message);
     };
@@ -463,7 +469,10 @@ function Autopilot({
         k.startsWith(`answer:${pid}:`),
     ).length;
     const builders = crew.filter((d) => d.role === 'Builder').length;
-    const toggle = (key: 'auto_triage' | 'auto_build', v: boolean) =>
+    const toggle = (
+        key: 'auto_triage' | 'auto_build' | 'auto_merge',
+        v: boolean,
+    ) =>
         void save('PATCH', `/factory/projects/${encodeURIComponent(pid)}`, {
             [key]: v,
         });
@@ -496,17 +505,35 @@ function Autopilot({
                         ` ${answering === 1 ? '1 droid is' : `${answering} droids are`} answering a triage question.`}
                 </p>
             )}
-            {planner && waiting > 0 && !triaging && (
-                <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
+            {planner && (ideas > 0 || readyCards > 0) && !triaging && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
                     <span className="text-muted-foreground">
-                        {waiting === 1
-                            ? '1 card in Ideas waits on your answer.'
-                            : `${waiting} cards in Ideas wait on your answer.`}{' '}
-                        Triage again to let the crew answer what it can.
+                        {waiting > 0
+                            ? `${waiting === 1 ? '1 card' : `${waiting} cards`} in Ideas ${waiting === 1 ? 'waits' : 'wait'} on your answer. Triage again to let the crew answer what it can.`
+                            : `${ideas === 1 ? '1 card' : `${ideas} cards`} in Ideas.`}
+                        {readyCards > 0 &&
+                            ` ${readyCards === 1 ? '1 card' : `${readyCards} cards`} in Ready for droids can be checked again for blockers.`}
                     </span>
-                    <Button size="sm" variant="outline" onClick={retriage}>
-                        Triage again
-                    </Button>
+                    <span className="flex gap-2">
+                        {ideas > 0 && (
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => void retriage()}
+                            >
+                                Triage again
+                            </Button>
+                        )}
+                        {readyCards > 0 && (
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => void retriage(true)}
+                            >
+                                Re-check Ready
+                            </Button>
+                        )}
+                    </span>
                 </div>
             )}
             <label className="flex items-start gap-3 text-sm">
@@ -520,7 +547,23 @@ function Autopilot({
                     <span className="block text-xs text-muted-foreground">
                         {builders
                             ? `An idle builder on the crew starts the next card in Ready for droids, and an idle reviewer checks its pull request.`
-                            : 'Add a Builder droid to the crew to start cards on their own.'}
+                            : 'Add a Builder droid to the crew to start cards on their own.'}{' '}
+                        Requested changes go back to the builder once it is
+                        free, and fixes go back to the reviewer.
+                    </span>
+                </span>
+            </label>
+            <label className="flex items-start gap-3 text-sm">
+                <Switch
+                    className="mt-0.5"
+                    checked={!!p.autoMerge}
+                    onCheckedChange={(v) => toggle('auto_merge', v)}
+                />
+                <span>
+                    Merge approved pull requests
+                    <span className="block text-xs text-muted-foreground">
+                        Squash-merges a pull request once it is approved, every
+                        check passes and the cards it is blocked by are merged.
                     </span>
                 </span>
             </label>

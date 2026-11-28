@@ -222,6 +222,12 @@ export function TaskSheet({
             { blocked_by: numbers },
         );
     };
+    const taskUrl = (action: string) =>
+        `/factory/projects/${encodeURIComponent(pid)}/tasks/${n}/${action}`;
+    const post = async (action: string) => {
+        const res = await save('POST', taskUrl(action), {});
+        if (typeof res?.message === 'string') toast.success(res.message);
+    };
     const pullUrl = (action: string) =>
         `/factory/projects/${encodeURIComponent(pid)}/pulls/${pr?.n}/${action}`;
     const rerun = () => {
@@ -436,6 +442,21 @@ export function TaskSheet({
                                         }
                                     />
                                 </div>
+                                {(i.col === 'ready' ||
+                                    i.col === 'progress') && (
+                                    <>
+                                        <span />
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="w-fit"
+                                            onClick={() => void post('triage')}
+                                        >
+                                            <RotateCwIcon />
+                                            Back to triage
+                                        </Button>
+                                    </>
+                                )}
                                 {[
                                     ['Builder', b],
                                     ['Reviewer', r],
@@ -691,6 +712,20 @@ export function TaskSheet({
                                             <ExternalLinkIcon />
                                             View on GitHub
                                         </Button>
+                                        {b &&
+                                            pr.state === 'changes' &&
+                                            p.linked && (
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() =>
+                                                        void post('fix')
+                                                    }
+                                                >
+                                                    <RotateCwIcon />
+                                                    Send back to {b.unit}
+                                                </Button>
+                                            )}
                                         {b && pr.state !== 'merged' && (
                                             <Button
                                                 size="sm"

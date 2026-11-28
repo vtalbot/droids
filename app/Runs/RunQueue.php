@@ -9,6 +9,7 @@ use App\Models\ChatMessage;
 use App\Models\Droid;
 use App\Models\EngineModel;
 use App\Models\Project;
+use App\Models\PullRequest;
 use App\Models\Run;
 use App\Models\Subscription;
 use App\Models\Task;
@@ -116,13 +117,25 @@ class RunQueue
             ->update(['status' => 'cancelled', 'error' => $reason, 'finished_at' => now()]);
     }
 
-    /** Queue a review of the task's open pull request, or return null when there is none to review yet. */
-    public function queueReview(Droid $reviewer, Task $task): ?Run
+    /** Whether a droid is working on another card, which a follow-up must not take it off. */
+    public static function busyElsewhere(Droid $droid, Task $task): bool
+    {
+        return $droid->task_id !== null && $droid->task_id !== $task->id && $droid->status !== 'idle';
+    }
+
+    /**
+     * Queue a review of the task's open pull request, or return null when there is none to review yet.
+     * A reviewer busy on another card is left there unless $takeOver (the person assigned it).
+     */
+    public function queueReview(Droid $reviewer, Task $task, bool $takeOver = false): ?Run
     {
         $task->loadMissing(['project', 'pullRequest']);
         $pr = $task->pullRequest;
         if (! $pr || in_array($pr->state, ['merged', 'closed'], true) || ! $task->project->isLinked()) {
             return null;
+        }
+        if (! $takeOver && self::busyElsewhere($reviewer, $task)) {
+            return null; // the autopilot queues it once the reviewer is free
         }
 
         $this->cancelFor($reviewer, 'Replaced by a newer review');
@@ -142,19 +155,23 @@ class RunQueue
         ]);
     }
 
-    /** Send a reviewer's requested changes back to the builder, within the round limit. */
-    private function queueFix(Task $task, Run $review, string $feedback): ?Run
+    /**
+     * Send a reviewer's requested changes back to the builder, within the round limit
+     * unless the person asks for another round. A builder busy on another card is left
+     * there: the autopilot sends the fix once it is free.
+     */
+    public function queueFix(Task $task, PullRequest $pr, string $feedback, bool $extraRound = false): ?Run
     {
         $builder = $task->builder;
         $rounds = Run::where('task_id', $task->id)->where('kind', 'fix')->whereNotIn('status', ['cancelled'])->count();
-        if (! $builder || $rounds >= self::MAX_FIX_ROUNDS) {
+        if (! $builder || (! $extraRound && $rounds >= self::MAX_FIX_ROUNDS) || self::busyElsewhere($builder, $task)) {
             return null;
         }
 
         $this->cancelFor($builder, 'Replaced by a fix after review');
         $builder->update([
             'status' => 'working', 'task_id' => $task->id, 'project_id' => $task->project_id,
-            'step' => "Queued: address the review on PR #{$review->pr_number}", 'progress' => 0, 'minutes' => 0,
+            'step' => "Queued: address the review on PR #{$pr->number}", 'progress' => 0, 'minutes' => 0,
         ]);
 
         return Run::create([
@@ -163,8 +180,8 @@ class RunQueue
             'project_id' => $task->project_id,
             'kind' => 'fix',
             'status' => 'queued',
-            'branch' => $review->branch,
-            'pr_number' => $review->pr_number,
+            'branch' => $pr->branch,
+            'pr_number' => $pr->number,
             'input' => $feedback,
         ]);
     }
@@ -454,10 +471,13 @@ class RunQueue
             return;
         }
 
-        $fix = $this->queueFix($task, $run, $verdict['feedback']);
-        Activity::create(['droid_id' => $droid->id, 'text' => $fix
-            ? "Asked for changes on PR #{$run->pr_number}, sent back to {$task->builder?->name}"
-            : "Asked for changes on PR #{$run->pr_number} for #{$task->number}: it needs you"]);
+        $fix = $task->pullRequest ? $this->queueFix($task, $task->pullRequest, $verdict['feedback']) : null;
+        $waits = ! $fix && $task->builder && self::busyElsewhere($task->builder, $task);
+        Activity::create(['droid_id' => $droid->id, 'text' => match (true) {
+            (bool) $fix => "Asked for changes on PR #{$run->pr_number}, sent back to {$task->builder?->name}",
+            $waits => "Asked for changes on PR #{$run->pr_number}, for {$task->builder->name} once it is free",
+            default => "Asked for changes on PR #{$run->pr_number} for #{$task->number}: it needs you",
+        }]);
     }
 
     private function failed(Run $run, string $error): void
